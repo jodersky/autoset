@@ -40,13 +40,13 @@ enum FieldError:
 object FieldError:
   private def shortTpe(value: Value) = value match
     case configparse.model.Null() => "<null>"
-    case Str(s) =>
+    case Str(s)                   =>
       val max = 10
       if s.length > max then s"'${s.take(max)}...'" else s"'$s'"
-    case _: Arr => "<config array>"
+    case _: Arr    => "<config array>"
     case _: Config => "<config object>"
 
   private def origin(value: Value): String = value.origins match
-    case Nil => ""
+    case Nil       => ""
     case head :: _ =>
       s"  at ${head.pretty}"

@@ -8,10 +8,12 @@ import configparse.model.{Config, Null, Str, Value, Arr, Origin}
 
 object JsonReader extends FileReader:
 
-  class ValueVisitor(name: String, ls: TextUtils.LocationStream) extends ujson.JsVisitor[Value, Value]:
+  class ValueVisitor(name: String, ls: TextUtils.LocationStream)
+      extends ujson.JsVisitor[Value, Value]:
     vv =>
 
-    class ConfigVisitor(idx: Int) extends upickle.core.ObjVisitor[Value, Config]:
+    class ConfigVisitor(idx: Int)
+        extends upickle.core.ObjVisitor[Value, Config]:
       val cfg = Config()
       val (row, col) = ls.posToRowAndCol(idx)
       cfg.origins = List(Origin.File(name, row, col))
@@ -31,7 +33,8 @@ object JsonReader extends FileReader:
 
     object KeyVisitor extends upickle.core.SimpleVisitor[Value, String]:
       def expectedMsg: String = "expected string"
-      override def visitString(s: CharSequence, index: Int): String = s.toString()
+      override def visitString(s: CharSequence, index: Int): String =
+        s.toString()
 
     class ArrVisitor(idx: Int) extends upickle.core.ArrVisitor[Value, Arr]:
       val arr = Arr()
@@ -43,14 +46,17 @@ object JsonReader extends FileReader:
 
       override def visitEnd(index: Int): Arr = arr
 
-
-
     override def visitTrue(index: Int): Value = visitString("true", index)
 
     override def visitJsonableObject(length: Int, index: Int) =
       ConfigVisitor(index)
 
-    override def visitFloat64StringParts(s: CharSequence, decIndex: Int, expIndex: Int, index: Int): Value = visitString(s, index)
+    override def visitFloat64StringParts(
+        s: CharSequence,
+        decIndex: Int,
+        expIndex: Int,
+        index: Int
+    ): Value = visitString(s, index)
 
     override def visitString(s: CharSequence, index: Int): Value =
       val v = Str(s.toString)
@@ -73,10 +79,13 @@ object JsonReader extends FileReader:
     try
       ujson.transform(ls, ValueVisitor(name, ls)) match
         case o: Config => Result.Success(o)
-        case other => Result.Error("JSON file does not contain a top-level object.")
+        case other     =>
+          Result.Error("JSON file does not contain a top-level object.")
     catch
       case ex: ujson.ParseException =>
         val (row, col) = ls.posToRowAndCol(ex.index)
         Result.Error(ex.clue, row, col)
       case ex: ujson.IncompleteParseException =>
-        Result.Error("reached end of file before the top-level JSON object was closed")
+        Result.Error(
+          "reached end of file before the top-level JSON object was closed"
+        )

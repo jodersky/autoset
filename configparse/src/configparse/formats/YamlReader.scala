@@ -12,7 +12,8 @@ object YamlReader extends FileReader:
   class ValueVisitor(name: String) extends yamlesque.Visitor[Value]:
     vv =>
 
-    class ConfigVisitor(row: Int, col: Int) extends yamlesque.ObjectVisitor[Config]:
+    class ConfigVisitor(row: Int, col: Int)
+        extends yamlesque.ObjectVisitor[Config]:
       val cfg = Config()
       cfg.origins = List(Origin.File(name, row, col))
       var key: String = null
@@ -38,7 +39,6 @@ object YamlReader extends FileReader:
 
       override def visitEnd(): Arr = arr
 
-
     override def visitBlockStringLiteral(ctx: Ctx, text: CharSequence) =
       visitString(ctx, text)
 
@@ -63,14 +63,18 @@ object YamlReader extends FileReader:
     override def visitBlockStringFolded(ctx: Ctx, text: CharSequence): Value =
       visitString(ctx, text)
 
-  override def read(name: String, stream: java.io.InputStream, sizeHint: Int): Result =
+  override def read(
+      name: String,
+      stream: java.io.InputStream,
+      sizeHint: Int
+  ): Result =
     try
-      val value = yamlesque.Parser(stream, name).parseValue(0, ValueVisitor(name))
+      val value =
+        yamlesque.Parser(stream, name).parseValue(0, ValueVisitor(name))
       value match
         case c: Config => Result.Success(c)
-        case _: Null => Result.Success(Config())
-        case other => Result.Error("expected object")
+        case _: Null   => Result.Success(Config())
+        case other     => Result.Error("expected object")
     catch
       case ex: yamlesque.ParseException =>
         Result.Error(ex.message, ex.position.line, ex.position.col, ex.line)
-

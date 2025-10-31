@@ -19,7 +19,10 @@ sealed trait Value:
     flattenInto(path, buffer)
     buffer
 
-  def flattenInto(path: Path = Nil, buffer: mutable.LinkedHashMap[String, Terminal]): Unit =
+  def flattenInto(
+      path: Path = Nil,
+      buffer: mutable.LinkedHashMap[String, Terminal]
+  ): Unit =
     this match
       case t: Terminal =>
         buffer += path.segments.mkString(".") -> t
@@ -34,12 +37,12 @@ sealed trait Value:
     for (key, terminal) <- flatten(path).toSeq.sortBy(_._1) do
       out.print(key)
       terminal match
-        case s: Str => out.println(s"='${s.str}'")
+        case s: Str  => out.println(s"='${s.str}'")
         case _: Null => out.println(s"=null")
       out.print("  from ")
 
       terminal.origins match
-        case Nil => out.println("<unknown>")
+        case Nil       => out.println("<unknown>")
         case head :: _ => out.println(head.pretty)
 
   def dump(path: Path = Nil): String =
@@ -70,17 +73,22 @@ sealed trait Value:
   //     val err = for e <- errors yield e.pretty + "\n"
   //     throw ReadException(err.mkString("\n", "\n", ""))
 
-/** The null value. Indicates that a value has not been set or explicitly set to null. */
+/** The null value. Indicates that a value has not been set or explicitly set to
+  * null.
+  */
 case class Null() extends Value with Terminal
 
 /** A text value. */
 case class Str(str: String) extends Value with Terminal
 
 /** An array of configuration values. */
-case class Arr(elems: mutable.ArrayBuffer[Value] = mutable.ArrayBuffer.empty) extends Value
+case class Arr(elems: mutable.ArrayBuffer[Value] = mutable.ArrayBuffer.empty)
+    extends Value
 
 // Note: merging and getting fields does not differentiate between unset and null values.
-case class Config(fields: mutable.LinkedHashMap[String, Value] = mutable.LinkedHashMap.empty) extends Value:
+case class Config(
+    fields: mutable.LinkedHashMap[String, Value] = mutable.LinkedHashMap.empty
+) extends Value:
 
   /** Merge the fields from the given object into this one.
     *
@@ -89,8 +97,7 @@ case class Config(fields: mutable.LinkedHashMap[String, Value] = mutable.LinkedH
     */
   def mergeFrom(other: Config): Unit =
     for (k, v) <- other.fields do
-      if !fields.contains(k) then
-        fields += k -> v
+      if !fields.contains(k) then fields += k -> v
       else
         val lhs = fields(k)
         (lhs, v) match
@@ -113,7 +120,7 @@ case class Config(fields: mutable.LinkedHashMap[String, Value] = mutable.LinkedH
 
   def setValue(path: List[String], value: Value): Unit =
     path match
-      case Nil => sys.error("empty key is not allowed")
+      case Nil        => sys.error("empty key is not allowed")
       case key :: Nil =>
         (fields.get(key), value) match
           case (Some(t1: Terminal), t2: Terminal) =>
@@ -123,7 +130,7 @@ case class Config(fields: mutable.LinkedHashMap[String, Value] = mutable.LinkedH
       case head :: tail =>
         val next = fields.get(head) match
           case Some(o: Config) => o
-          case _ =>
+          case _               =>
             val o = Config()
             fields(head) = o
             o
@@ -132,8 +139,12 @@ case class Config(fields: mutable.LinkedHashMap[String, Value] = mutable.LinkedH
   def setValue(path: String, value: Value): Unit =
     setValue(path.split('.').toList, value)
 
-  def set(path: String, value: String, origin: Origin = null)(using here: SourcePos): Unit =
-    val origin1 = if origin != null then origin else Origin.Code(here.path, here.row, here.col)
+  def set(path: String, value: String, origin: Origin = null)(using
+      here: SourcePos
+  ): Unit =
+    val origin1 =
+      if origin != null then origin
+      else Origin.Code(here.path, here.row, here.col)
     val v = Str(value)
     v.origins = List(origin1)
     setValue(path, v)
@@ -149,7 +160,6 @@ case class Config(fields: mutable.LinkedHashMap[String, Value] = mutable.LinkedH
   //   case Result.Error(errors) =>
   //       val err = for e <- errors yield e.pretty
   //       throw ReadException(err.mkString("\n", "\n", ""))
-
 
   // def unmarshalOrExit[A](
   //   stderr: java.io.PrintStream = System.err,

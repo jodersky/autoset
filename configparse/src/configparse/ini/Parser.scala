@@ -1,9 +1,9 @@
 package configparse.ini
 
 case class ParseException(
-  pos: Pos,
-  message: String,
-  line: String
+    pos: Pos,
+    message: String,
+    line: String
 ) extends Exception(message: String) {
   def pretty() = {
     val caret = " " * (pos.col - 1) + "^"
@@ -40,7 +40,7 @@ class Parser(input: java.io.InputStream, visitor: Visitor):
         cpos.row += 1
         lineBuffer.clear()
       case -1 | '\r' => // invisible chars, do nothing
-      case _ =>
+      case _         =>
         cpos.col += 1
         lineBuffer += char.toChar
     char = input.read()
@@ -57,13 +57,17 @@ class Parser(input: java.io.InputStream, visitor: Visitor):
 
   private def prettyChar(char: Int) =
     if (char == -1) "EOF"
-    else char.toChar match {
-      case '\n' => "new line"
-      case c => s"'$c'"
-    }
+    else
+      char.toChar match {
+        case '\n' => "new line"
+        case c    => s"'$c'"
+      }
 
   private def expectationError(expected: String*) = {
-    errorAt(cpos.copy(), s"Expected ${expected.mkString(" or ")}. Found ${prettyChar(char)}.")
+    errorAt(
+      cpos.copy(),
+      s"Expected ${expected.mkString(" or ")}. Found ${prettyChar(char)}."
+    )
   }
 
   private def skipSpace() = {
@@ -78,9 +82,17 @@ class Parser(input: java.io.InputStream, visitor: Visitor):
   private def parseSegment(): String = {
     import java.lang.Character
 
-    if (Character.isAlphabetic(char) || Character.isDigit(char) || char == '_' || char == '-') {
+    if (
+      Character.isAlphabetic(char) || Character.isDigit(
+        char
+      ) || char == '_' || char == '-'
+    ) {
       buffer.clear()
-      while (Character.isAlphabetic(char) || Character.isDigit(char) || char == '_' || char == '-') {
+      while (
+        Character.isAlphabetic(char) || Character.isDigit(
+          char
+        ) || char == '_' || char == '-'
+      ) {
         buffer += char.toChar
         readChar()
       }
@@ -108,11 +120,10 @@ class Parser(input: java.io.InputStream, visitor: Visitor):
     skipSpace()
     val sectionPath = parseSectionKey()
     skipSpace()
-    if (char != ']')  expectationError("']'")
+    if (char != ']') expectationError("']'")
     readChar()
 
     visitor.visitSection(pos, sectionPath)
-
 
   private def parseKeyValue(): Unit =
     val pos = cpos.copy()
@@ -134,23 +145,19 @@ class Parser(input: java.io.InputStream, visitor: Visitor):
     }
     val value = buffer.result()
 
-    if value.isEmpty() then
-      visitor.visitEmpty(vpos)
-    else
-      visitor.visitString(vpos, value)
+    if value.isEmpty() then visitor.visitEmpty(vpos)
+    else visitor.visitString(vpos, value)
 
   private def parseNext(): Unit =
     while (char == ' ' || char == '\t' || char == '\n') readChar()
     char match {
-      case -1 =>
+      case -1        =>
       case ';' | '#' =>
         while char != -1 && char != '\n' do readChar()
         parse()
       case '[' => parseSection()
-      case s => parseKeyValue()
+      case s   => parseKeyValue()
     }
 
   def parse(): Unit =
     while char != -1 do parseNext()
-
-

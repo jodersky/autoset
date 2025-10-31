@@ -45,4 +45,3 @@ object IniReader extends FileReader:
     catch
       case ex: ini.ParseException =>
         Result.Error(ex.message, ex.pos.row, ex.pos.col, ex.line)
-

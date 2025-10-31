@@ -5,7 +5,8 @@ import java.util.Arrays
 
 object TextUtils:
 
-  class LocationStream(in: java.io.InputStream, sizeHint: Int) extends java.io.InputStream:
+  class LocationStream(in: java.io.InputStream, sizeHint: Int)
+      extends java.io.InputStream:
     var i = 0
     val offsets = collection.mutable.ArrayBuffer[Int](sizeHint)
 
@@ -23,8 +24,7 @@ object TextUtils:
     def posToRowAndCol(pos: Int): (Int, Int) =
       var idx = 0
       var offset = 0
-      while
-        idx < offsets.size && offsets(idx) < pos
+      while idx < offsets.size && offsets(idx) < pos
       do
         offset = offsets(idx)
         idx += 1
@@ -37,7 +37,6 @@ object TextUtils:
       val col = pos - offset + 1
       // println(s">>> pos: ${pos}, idx: ${idx}, offset: ${offset}, col: ${col}")
       (row, col)
-
 
   def lineOffsets(in: java.io.InputStream): Array[Int] =
     var i = 0
@@ -53,8 +52,7 @@ object TextUtils:
       c = in.read()
       c != -1
     do
-      if c == '\n' then
-        offsets += i
+      if c == '\n' then offsets += i
       i += 1
 
     offsets.result()

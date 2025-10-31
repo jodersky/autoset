@@ -4,10 +4,11 @@ import java.nio.file.StandardWatchEventKinds as ek
 import scala.jdk.CollectionConverters.*
 
 class Watcher(
-  paths: Iterable[os.Path],
-  onEvent: Set[os.Path] => Unit,
-  daemonize: Boolean = false
-) extends java.lang.AutoCloseable with java.io.Closeable:
+    paths: Iterable[os.Path],
+    onEvent: Set[os.Path] => Unit,
+    daemonize: Boolean = false
+) extends java.lang.AutoCloseable
+    with java.io.Closeable:
 
   @volatile private var isRunning = true
   private val service = java.nio.file.FileSystems.getDefault().newWatchService()
@@ -43,11 +44,11 @@ class Watcher(
         key != null
       do
         val dir = os.Path(key.watchable().asInstanceOf[java.nio.file.Path])
-        if watchedPaths.contains(dir) then
-          paths += dir
+        if watchedPaths.contains(dir) then paths += dir
         else
           for event <- key.pollEvents().asScala do
-            val rel = os.SubPath(event.context().asInstanceOf[java.nio.file.Path])
+            val rel =
+              os.SubPath(event.context().asInstanceOf[java.nio.file.Path])
             val path = dir / rel
             if watchedPaths.contains(path) then paths += path
         key.reset()
@@ -59,8 +60,7 @@ class Watcher(
 
   private def run(): Unit =
     while isRunning do
-      try
-        process()
+      try process()
       catch
         case e: java.nio.file.ClosedWatchServiceException =>
           isRunning = false

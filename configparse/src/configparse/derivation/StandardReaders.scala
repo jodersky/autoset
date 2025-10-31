@@ -26,13 +26,12 @@ trait StandardReaders extends ReaderApi:
   given stringReader: Reader[String] with
     def read(value: Value, path: Path): Result[String] = value match
       case Str(s) => Success(s)
-      case _ => Error(FieldError.TypeMismatch(path, value, "string"))
+      case _      => Error(FieldError.TypeMismatch(path, value, "string"))
 
   given intReader: Reader[Int] with
     def read(value: Value, path: Path): Result[Int] = value match
       case Str(s) =>
-        try
-          Success(s.toInt)
+        try Success(s.toInt)
         catch
           case _: NumberFormatException =>
             Error(FieldError.TypeMismatch(path, value, "integer"))
@@ -46,8 +45,7 @@ trait StandardReaders extends ReaderApi:
             case Origin.File(file, _, _) :: _ =>
               os.Path(file, os.pwd) / os.up
             case _ => os.pwd
-          try
-            Success(os.Path(s, root))
+          try Success(os.Path(s, root))
           catch
             case _ =>
               Error(FieldError.TypeMismatch(path, value, "path"))
@@ -64,7 +62,7 @@ trait StandardReaders extends ReaderApi:
   given arrReader: Reader[Arr] with
     def read(value: Value, path: Path): Result[Arr] = value match
       case c: Arr => Success(c)
-      case other => Error(FieldError.TypeMismatch(path, value, "config array"))
+      case other  => Error(FieldError.TypeMismatch(path, value, "config array"))
 
   given strReader: Reader[Str] with
     def read(value: Value, path: Path): Result[Str] = value match
@@ -72,44 +70,47 @@ trait StandardReaders extends ReaderApi:
       case other => Error(FieldError.TypeMismatch(path, value, "config string"))
 
   given optReader[A](using p: Reader[A]): Reader[Option[A]] =
-    (value: Value, path: Path) => value match
-      case _: Null => Success(None)
-      case v => p.read(v, path).map(r => Some(r))
+    (value: Value, path: Path) =>
+      value match
+        case _: Null => Success(None)
+        case v       => p.read(v, path).map(r => Some(r))
 
-  given mapReader[K, V, M[K, V] <: Iterable[(K, V)]](
-    using kr: Reader[K],
-    vr: Reader[V],
-    factory: collection.Factory[(K, V), M[K, V]]
-  ): Reader[M[K, V]] = (v, p) => v match
-    case Config(fields) =>
-      val errors = m.ArrayBuffer.empty[FieldError]
-      val items = factory.newBuilder
-      for (k, v) <- fields do
-        kr.read(Str(k), p) match
-          case Success(readdKey) =>
-            vr.read(v, p / k) match
-              case Success(readdValue) =>
-                items += readdKey -> readdValue
-              case Error(errs*) =>
-                errors ++= errs
-          case Error(errs*) => errors ++= errs
-      if errors.isEmpty then Success(items.result())
-      else Error(errors.toSeq*)
-    case Null() => Success(factory.newBuilder.result())
-    case _ => Error(FieldError.TypeMismatch(p, v, "config map"))
+  given mapReader[K, V, M[K, V] <: Iterable[(K, V)]](using
+      kr: Reader[K],
+      vr: Reader[V],
+      factory: collection.Factory[(K, V), M[K, V]]
+  ): Reader[M[K, V]] = (v, p) =>
+    v match
+      case Config(fields) =>
+        val errors = m.ArrayBuffer.empty[FieldError]
+        val items = factory.newBuilder
+        for (k, v) <- fields do
+          kr.read(Str(k), p) match
+            case Success(readdKey) =>
+              vr.read(v, p / k) match
+                case Success(readdValue) =>
+                  items += readdKey -> readdValue
+                case Error(errs*) =>
+                  errors ++= errs
+            case Error(errs*) => errors ++= errs
+        if errors.isEmpty then Success(items.result())
+        else Error(errors.toSeq*)
+      case Null() => Success(factory.newBuilder.result())
+      case _      => Error(FieldError.TypeMismatch(p, v, "config map"))
 
-  given colReader[Elem, Col[Elem] <: Iterable[Elem]](
-    using elementReader: Reader[Elem],
-    factory: collection.Factory[Elem, Col[Elem]]
-  ): Reader[Col[Elem]] = (v, p) => v match
-    case Arr(elems) =>
-      val errors = m.ArrayBuffer.empty[FieldError]
-      val items = factory.newBuilder
-      for (elem, idx) <- elems.zipWithIndex do
-        elementReader.read(elem, p / idx.toString) match
-          case Success(item) => items += item
-          case Error(errs*) => errors ++= errs
-      if errors.isEmpty then Success(items.result())
-      else Error(errors.toSeq*)
-    case Null() => Success(factory.newBuilder.result())
-    case _ => Error(FieldError.TypeMismatch(p, v, "config array"))
+  given colReader[Elem, Col[Elem] <: Iterable[Elem]](using
+      elementReader: Reader[Elem],
+      factory: collection.Factory[Elem, Col[Elem]]
+  ): Reader[Col[Elem]] = (v, p) =>
+    v match
+      case Arr(elems) =>
+        val errors = m.ArrayBuffer.empty[FieldError]
+        val items = factory.newBuilder
+        for (elem, idx) <- elems.zipWithIndex do
+          elementReader.read(elem, p / idx.toString) match
+            case Success(item) => items += item
+            case Error(errs*)  => errors ++= errs
+        if errors.isEmpty then Success(items.result())
+        else Error(errors.toSeq*)
+      case Null() => Success(factory.newBuilder.result())
+      case _      => Error(FieldError.TypeMismatch(p, v, "config array"))
