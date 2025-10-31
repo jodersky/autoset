@@ -1,0 +1,4 @@
+Expected alphanumeric or '_' or '-'. Found ']'.
+1:4
+[a]]
+   ^

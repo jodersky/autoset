@@ -1,0 +1,4 @@
+Expected alphanumeric or '_' or '-'. Found new line.
+1:2
+[
+ ^

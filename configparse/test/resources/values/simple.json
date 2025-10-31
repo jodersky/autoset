@@ -1,0 +1,9 @@
+{
+  "global_key": "a",
+  "section1": {
+    "a": "1"
+  },
+  "section2": {
+    "a": 2
+  }
+}

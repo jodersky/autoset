@@ -1,0 +1,29 @@
+{
+    "hello": "world",
+    "foo": {
+        "bar": "baz",
+        "nested": {
+            "yo": "ok"
+        },
+        "a": null,
+        "arr":[
+            "a",
+            "b",
+            {
+                "c": "c"
+            }
+        ]
+    },
+    "arrint": [
+        [1],
+        [2,3],
+        [
+            1,
+            3
+        ]
+    ],
+    "nested": {
+        "a": 2,
+        "b": "ok"
+    }
+}

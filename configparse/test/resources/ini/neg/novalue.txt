@@ -1,0 +1,4 @@
+Expected '='. Found new line.
+1:2
+a
+ ^

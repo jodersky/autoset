@@ -1,0 +1,62 @@
+//| mill-version: 1.0.6
+
+import mill._, scalalib._, scalajslib._, scalanativelib._, scalafmt._
+
+val scala3 = "3.7.1"
+val scalaNative = "0.5.9"
+
+object thirdparty:
+  val oslib = mvn"com.lihaoyi::os-lib::0.11.6"
+  val utest = mvn"com.lihaoyi::utest::0.9.1"
+  val ujson = mvn"com.lihaoyi::ujson::4.0.2"
+  val yamlesque = mvn"io.crashbox::yamlesque::0.4.1"
+  val sconfig = mvn"org.ekrich::sconfig::1.7.0"
+
+trait ConfigParseModule extends ScalaModule with ScalafmtModule {
+
+  def moduleDir = super.moduleDir / os.up
+
+  def scalaVersion = scala3
+
+  def scalacOptions = Seq("-deprecation", "-feature", "-explain-cyclic")
+
+  def mvnDeps = Seq(
+    thirdparty.oslib,
+    thirdparty.ujson,
+    thirdparty.yamlesque,
+    thirdparty.sconfig
+  )
+
+  trait Tests extends ScalaTests {
+    def scalacOptions = Seq("-explain")
+    def testFramework = "utest.runner.Framework"
+    def mvnDeps = Seq(
+      thirdparty.utest
+    )
+  }
+
+}
+
+object configparse extends Module:
+  object jvm extends ConfigParseModule:
+    def sourcesFolders = Seq("src", "src-jvm")
+    object test extends Tests
+
+  object native extends ConfigParseModule with ScalaNativeModule:
+    def sourcesFolders = Seq("src", "src-native")
+
+    def scalaNativeVersion = scalaNative
+    object test extends Tests with ScalaNativeTests
+
+// def ivyDeps = super.ivyDeps() ++ Agg(
+//     ivy"org.ekrich::sjavatime::1.3.0",
+//   )
+//   def nativeLinkStubs = true
+//   object test extends ScalaNativeTests with build.Utest {
+//     def nativeLinkStubs = true
+//     def testSandboxWorkingDir = false
+//   }
+
+object example extends ScalaModule:
+  def scalaVersion = scala3
+  def moduleDeps = Seq(configparse.jvm)

@@ -1,0 +1,4 @@
+Expected ']'. Found '#'.
+1:4
+[a #b]
+   ^

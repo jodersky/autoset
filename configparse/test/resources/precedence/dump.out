@@ -1,0 +1,17 @@
+arr.0='3' from file.json:7:13
+env.a='env' from env APP_ENV_A
+env.b='env' from env APP_ENV_B
+env.c='env' from env EXTRA_COOL
+env.d='file' from file.json:18:14
+key1='1' from dir/1.json:2:13
+key2='2' from dir/2.json:2:13
+key_file='file' from file.json:2:17
+mkey1.a.a='1' from dir/1.json:5:18
+mkey1.a.b='2' from dir/2.json:5:18
+mkey1.a.c='2' from dir/2.json:6:18
+mkey1.b='file' from file.json:4:14
+mkey1.c=null from file.json:5:14
+props.a='props' from system property app.props.a
+props.b='props' from system property app.props.b
+props.c='props' from system property extra.cool
+props.d='file' from file.json:12:14

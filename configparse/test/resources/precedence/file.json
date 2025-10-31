@@ -1,0 +1,20 @@
+{
+    "key_file": "file",
+    "mkey1": {
+        "b": "file",
+        "c": null
+    },
+    "arr": [3],
+    "props": {
+        "a": "file",
+        "b": "file",
+        "c": "file",
+        "d": "file"
+    },
+    "env": {
+        "a": "file",
+        "b": "file",
+        "c": "file",
+        "d": "file"
+    }
+}
