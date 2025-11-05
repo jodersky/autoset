@@ -1,10 +1,9 @@
 package configparse.model
 
-case class Path(segments: Vector[String] = Vector()):
-  override def toString(): String = segments.mkString(".")
-
-  def /(segment: String): Path = Path(segments :+ segment)
-
+type Path = Seq[String]
 object Path:
-  given Conversion[Iterable[String], Path] = ls => Path(ls.toVector)
-  given Conversion[String, Path] = s => Path(s.split('.').toVector)
+
+  val Empty = Vector.empty[String]
+
+  def split(str: String): Path =
+    str.split('.').toVector

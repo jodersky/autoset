@@ -62,4 +62,18 @@ object ObjTest extends TestSuite:
         )
       )
     }
+    test("empty") {
+      val o1 = Config(
+        "a" -> Config()
+      )
+      val o2 = Config(
+        "a" -> Null()
+      )
+      o1.mergeFrom(o2)
+      assert(
+        o1 == Config(
+          "a" -> Config()
+        )
+      )
+    }
   }

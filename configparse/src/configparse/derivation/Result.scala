@@ -49,4 +49,4 @@ object FieldError:
   private def origin(value: Value): String = value.origins match
     case Nil       => ""
     case head :: _ =>
-      s"  at ${head.pretty}"
+      s"  from ${head.pretty}"

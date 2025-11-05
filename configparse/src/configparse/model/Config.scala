@@ -14,38 +14,38 @@ sealed trait Value:
   /** All origins that were used to get this value. */
   var origins: List[Origin] = Nil
 
-  def flatten(path: Path = Nil): mutable.LinkedHashMap[String, Terminal] =
+  def flatten(path: Path = Path.Empty): mutable.LinkedHashMap[String, Terminal] =
     val buffer = mutable.LinkedHashMap.empty[String, Terminal]
     flattenInto(path, buffer)
     buffer
 
   def flattenInto(
-      path: Path = Nil,
+      path: Path = Path.Empty,
       buffer: mutable.LinkedHashMap[String, Terminal]
   ): Unit =
     this match
       case t: Terminal =>
-        buffer += path.segments.mkString(".") -> t
+        buffer += path.mkString(".") -> t
       case arr: Arr =>
         for (elem, idx) <- arr.elems.zipWithIndex do
-          elem.flattenInto(Path(path.segments :+ idx.toString), buffer)
+          elem.flattenInto(path :+ idx.toString, buffer)
       case cfg: Config =>
         for (key, value) <- cfg.fields do
-          value.flattenInto(Path(path.segments :+ key), buffer)
+          value.flattenInto(path :+ key, buffer)
 
-  def dumpInto(path: Path = Nil, out: java.io.PrintStream = System.err): Unit =
+  def dumpInto(path: Path = Path.Empty, out: java.io.PrintStream = System.err): Unit =
     for (key, terminal) <- flatten(path).toSeq.sortBy(_._1) do
       out.print(key)
       terminal match
         case s: Str  => out.println(s"='${s.str}'")
-        case _: Null => out.println(s"=null")
+        case _: Null => out.println(s"=nul
       out.print("  from ")
 
       terminal.origins match
         case Nil       => out.println("<unknown>")
         case head :: _ => out.println(head.pretty)
 
-  def dump(path: Path = Nil): String =
+  def dump(path: Path = Path.Empty): String =
     val baos = java.io.ByteArrayOutputStream()
     dumpInto(path, java.io.PrintStream(baos))
     new String(baos.toByteArray(), "utf-8")
@@ -67,14 +67,21 @@ sealed trait Value:
   //               Null()
   //         case _ => Null()
 
-  // def get[A](path: Path = Nil)(using reader: Reader[A]): A = reader.read(getValue(path), path.segments) match
+  // def get[A](path: Path = Path.Empty)(using reader: Reader[A]): A = reader.read(getValue(path), path.segments) match
   //   case Result.Success(a) => a
   //   case Result.Error(errors) =>
   //     val err = for e <- errors yield e.pretty + "\n"
   //     throw ReadException(err.mkString("\n", "\n", ""))
 
-/** The null value. Indicates that a value has not been set or explicitly set to
-  * null.
+/** Indicates that a value has not been set in the configuration.
+  *
+  * This is only used in some configuration formats, where a field's type cannot
+  * be interpreted because it is empty, and depending on context it could be any
+  * type. For example, in yaml, and empty field could be null, an empty array, or
+  * an empty object.
+  *
+  * TODO: rename to Unset or Empty?
+  * TODO: remove entirely in parsers?
   */
 case class Null() extends Value with Terminal
 
@@ -104,6 +111,8 @@ case class Config(
           case (o1: Config, o2: Config) =>
             o1.mergeFrom(o2)
             o1.origins = o2.origins ::: o1.origins
+          case (_, Null()) =>
+            // do nothing, keep lhs
           case _ =>
             v.origins = v.origins ::: lhs.origins
             fields(k) = v

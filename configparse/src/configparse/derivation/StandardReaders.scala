@@ -87,7 +87,7 @@ trait StandardReaders extends ReaderApi:
         for (k, v) <- fields do
           kr.read(Str(k), p) match
             case Success(readdKey) =>
-              vr.read(v, p / k) match
+              vr.read(v, p :+ k) match
                 case Success(readdValue) =>
                   items += readdKey -> readdValue
                 case Error(errs*) =>
@@ -107,7 +107,7 @@ trait StandardReaders extends ReaderApi:
         val errors = m.ArrayBuffer.empty[FieldError]
         val items = factory.newBuilder
         for (elem, idx) <- elems.zipWithIndex do
-          elementReader.read(elem, p / idx.toString) match
+          elementReader.read(elem, p :+ idx.toString) match
             case Success(item) => items += item
             case Error(errs*)  => errors ++= errs
         if errors.isEmpty then Success(items.result())

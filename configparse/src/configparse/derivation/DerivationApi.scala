@@ -37,11 +37,11 @@ trait DerivationApi extends ReaderApi:
             fields(i) = fieldDefaults(i).get()
           case None =>
             // errors += FieldError.Missing(path / segment)
-            fieldReaders(i).read(Null(), path / segment) match
+            fieldReaders(i).read(Null(), path :+ segment) match
               case Result.Success(a)   => fields(i) = a
               case Result.Error(errs*) => errors ++= errs
           case Some(value) =>
-            fieldReaders(i).read(value, path / segment) match
+            fieldReaders(i).read(value, path :+ segment) match
               case Result.Success(a)   => fields(i) = a
               case Result.Error(errs*) => errors ++= errs
         i += 1

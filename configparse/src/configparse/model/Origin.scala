@@ -10,6 +10,7 @@ enum Origin:
   def pretty = this match
     case File(file, row, col) =>
       val b = StringBuilder()
+      b++= "file "
       b ++= file
       if row >= 0 then
         b += ':'
@@ -19,7 +20,7 @@ enum Origin:
         b ++= col.toString
       b.result()
     case Env(name) =>
-      s"env $name"
+      s"environment variable $name"
     case Props(name) =>
       s"system property $name"
     case Arg() =>
