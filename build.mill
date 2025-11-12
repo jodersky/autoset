@@ -1,6 +1,6 @@
 //| mill-version: 1.0.6
 
-import mill._, scalalib._, scalajslib._, scalanativelib._, scalafmt._
+import mill._, scalalib._, scalajslib._, scalanativelib._, scalafmt._, publish._
 
 val scala3 = "3.7.1"
 val scalaNative = "0.5.9"
@@ -14,14 +14,23 @@ object thirdparty:
   // val sjavatime = mvn"org.ekrich::sjavatime::1.4.0"
   val readers = mvn"io.crashbox::clip-readers::0.1.0"
 
-trait ConfigParseModule extends ScalaModule with ScalafmtModule:
+trait Publish extends PublishModule:
+  def publishVersion = "0.1.0"
+  def pomSettings = PomSettings(
+    description = "A configuration parsing library for Scala 3",
+    organization = "io.crashbox",
+    url = "https://github.com/jodersky/configparse",
+    licenses = Seq(License.MIT),
+    versionControl = VersionControl.github("jodersky", "configparse"),
+    developers = Seq(
+      Developer("jodersky", "Jakob Odersky", "https://github.com/jodersky")
+    )
+  )
 
+trait ConfigParseModule extends ScalaModule with ScalafmtModule with Publish:
   def moduleDir = super.moduleDir / os.up
-
   def scalaVersion = scala3
-
   def scalacOptions = Seq("-deprecation", "-feature", "-explain-cyclic")
-
   def mvnDeps = Seq(
     thirdparty.oslib,
     thirdparty.ujson,
@@ -40,10 +49,12 @@ trait ConfigParseModule extends ScalaModule with ScalafmtModule:
 object configparse extends Module:
   object jvm extends ConfigParseModule:
     def sourcesFolders = Seq("src", "src-jvm")
+    def artifactName = "configparse"
     object test extends Tests
 
   object native extends ConfigParseModule with ScalaNativeModule:
     def sourcesFolders = Seq("src", "src-native")
+    def artifactName = "configparse"
     def scalaNativeVersion = scalaNative
     object test extends Tests with ScalaNativeTests:
       def nativeLinkStubs = true
