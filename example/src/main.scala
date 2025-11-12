@@ -20,7 +20,12 @@ def main(args: Array[String]): Unit =
   println(config.dump())
 
   // map the config to a scala value or exit, showing any errors
-  val settings = configparse.read[Settings](config = config)
-  println("case class mapped result")
-  println(settings)
+  try
+    val settings = configparse.read[Settings](config = config, envPrefix = "EXAMPLE_")
+    println("case class mapped result")
+    println(settings)
+  catch
+    case e: configparse.model.ReadException =>
+      println("errors while reading config:")
+      println(e.getMessage())
 //end snippet

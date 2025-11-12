@@ -18,8 +18,6 @@ object ValuesTest extends DynamicTestSuite {
           b ++= "'"
           b ++= s
           b ++= "'"
-        case configparse.Null() =>
-          b ++= "null"
       b ++= "\n"
 
     DiffTools.assertNoDiff(outFile, b.result())

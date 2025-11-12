@@ -3,7 +3,7 @@ package configparse.formats
 import FileReader.Result
 import java.io.InputStream
 import org.ekrich.config
-import configparse.model.{Config, Null, Str, Value, Arr, Origin}
+import configparse.model.{Config, Str, Value, Arr, Origin}
 
 object HoconReader extends FileReader:
   import scala.jdk.CollectionConverters.*
@@ -25,7 +25,7 @@ object HoconReader extends FileReader:
           arr.elems += traverse(filename, elem)
         arr
       case config.ConfigValueType.NULL =>
-        val n = Null()
+        val n = Str("null")
         n.origins = List(origin)
         n
       case _ =>

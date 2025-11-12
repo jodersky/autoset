@@ -4,7 +4,7 @@ import FileReader.Result
 import configparse.ini
 import configparse.ini.Pos
 import java.io.InputStream
-import configparse.model.{Config, Null, Str, Value, Arr, Origin}
+import configparse.model.{Config, Str, Value, Arr, Origin}
 
 object IniReader extends FileReader:
 
@@ -19,10 +19,8 @@ object IniReader extends FileReader:
       v.origins = Origin.File(name, pos.row, pos.col) :: Nil
       active.fields(key) = v
 
-    override def visitEmpty(pos: Pos): Unit =
-      val v = Null()
-      v.origins = Origin.File(name, pos.row, pos.col) :: Nil
-      active.fields(key) = v
+    // ignore keys without values
+    override def visitEmpty(pos: Pos): Unit = ()
 
     override def visitSection(pos: Pos, sectionKey: Seq[String]): Unit =
       var cfg1 = cfg

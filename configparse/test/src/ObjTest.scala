@@ -42,7 +42,7 @@ object ObjTest extends TestSuite:
             "a" -> Str("override"),
             "c" -> Str("ok")
           ),
-          "b" -> Null()
+          "b" -> Str("b")
         )
       )
 
@@ -57,22 +57,22 @@ object ObjTest extends TestSuite:
               "b" -> Str("ok"),
               "c" -> Str("ok")
             ),
-            "b" -> Null()
+            "b" -> Str("b")
           )
         )
       )
     }
     test("empty") {
       val o1 = Config(
-        "a" -> Config()
+        "a" -> Str("b")
       )
       val o2 = Config(
-        "a" -> Null()
+        "a" -> Config()
       )
       o1.mergeFrom(o2)
       assert(
         o1 == Config(
-          "a" -> Config()
+          "a" -> Str("b")
         )
       )
     }

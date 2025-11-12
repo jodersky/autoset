@@ -4,14 +4,15 @@ import utest._
 
 import configparse.derivation.Result.Success
 import configparse.derivation.Result.Error
-import configparse.derivation.FieldError
 import configparse.model.ReadException
+import configparse.derivation.Invalid
+import configparse.model.Path
 
 object DerivationTest extends TestSuite {
   def tests: Tests = Tests{
     test("basic") {
       case class Inner(bar: Int = 42) derives configparse.Reader
-      case class MyConfig(fooBar: Int = 2, inner: Inner) derives configparse.Reader
+      case class MyConfig(fooBar: Int = 2, inner: Inner = Inner()) derives configparse.Reader
 
       test("defaults") {
         configparse.read[MyConfig]() ==> MyConfig(2, Inner(42))
@@ -26,60 +27,74 @@ object DerivationTest extends TestSuite {
         ) ==> MyConfig(1, Inner(2))
       }
     }
-    // test("missing") {
-    //   case class Inner(bar: Int) derives configparse.default.Reader
-    //   case class MyConfig(fooBar: Int, inner: Inner) derives configparse.default.Reader
+    test("missing") {
+      case class Inner(bar: Int) derives configparse.default.Reader
+      case class MyConfig(fooBar: Int, inner: Inner) derives configparse.default.Reader
 
-    //   test("defaults") {
-    //     val errs = configparse.default.readResult[MyConfig](configparse.read()).asInstanceOf[Error].errors
-    //     errs ==> Seq(
-    //       FieldError.TypeMismatch("foo_bar", configparse.Null(), "int"),
-    //       FieldError.TypeMismatch("inner.bar", configparse.Null(), "int")
-    //     )
-    //   }
-    //   test("partial1") {
-    //     val errs = configparse.default.readResult[MyConfig](configparse.read(args=Map("foo_bar" -> "1"))).asInstanceOf[Error].errors
-    //     errs ==> Seq(
-    //       FieldError.TypeMismatch("inner.bar", configparse.Null(), "int")
-    //     )
-    //   }
-    //   test("partial2") {
-    //     val errs = configparse.default.readResult[MyConfig](configparse.read(args=Map("inner.bar" -> "0"))).asInstanceOf[Error].errors
-    //     errs ==> Seq(
-    //       FieldError.TypeMismatch("foo_bar", configparse.Null(), "int")
-    //     )
-    //   }
-    //   test("mix") {
-    //     val errs = configparse.default.readResult[MyConfig](configparse.read(args=Map("inner.bar" -> "a"))).asInstanceOf[Error].errors
-    //     errs ==> Seq(
-    //       FieldError.TypeMismatch("foo_bar", configparse.Null(), "int"),
-    //       FieldError.TypeMismatch("inner.bar", configparse.Str("a"), "int")
-    //     )
-    //   }
-    //   test("ok") {
-    //     configparse.default.readResult[MyConfig](configparse.read(args=Map("inner.bar" -> "1", "foo_bar" -> "2"))) ==>
-    //       Success(
-    //         MyConfig(2, Inner(1))
-    //       )
-    //   }
-    // }
-    // test("paths"){
-    //   case class MyConfig(path: os.Path) derives configparse.default.Reader
+      test("defaults") {
+        val errs = configparse.readResult[MyConfig]().asInstanceOf[Error].missing
 
-    //   configparse.default.readResult[MyConfig](configparse.read(args=Map("path" -> "foo/bar"))) ==> Success(
-    //     MyConfig(os.pwd / "foo" / "bar")
-    //   )
+        errs ==> Seq(
+          Path("foo_bar"),
+          Path("inner")
+        )
+      }
+      test("partial1") {
+        val errs = configparse.readResult[MyConfig](args=Map("foo_bar" -> "1")).asInstanceOf[Error].missing
+        errs ==> Seq(
+          Path("inner")
+        )
+      }
+      test("partial2") {
+        val errs = configparse.readResult[MyConfig](args=Map("inner.bar" -> "0")).asInstanceOf[Error].missing
+        errs ==> Seq(
+          Path("foo_bar")
+        )
+      }
+      test("mix") {
+        val err = configparse.readResult[MyConfig](args=Map("inner.bar" -> "a")).asInstanceOf[Error]
+        err.missing ==> Seq(
+          Path("foo_bar")
+        )
+        err.invalid ==> Seq(
+          Invalid(
+            Path("inner", "bar"),
+            configparse.Str("a"),
+            "'a' is not an integral number"
+          )
+        )
+      }
+      test("ok") {
+        configparse.readResult[MyConfig](args=Map("inner.bar" -> "1", "foo_bar" -> "2")) ==>
+          Success(
+            MyConfig(2, Inner(1))
+          )
+      }
+      test("config"){
+        val cfg = configparse.readConfig(args=Map("inner.bar" -> "1", "foo_bar" -> "2"))
+        configparse.readResult[MyConfig](config=cfg) ==>
+          Success(
+            MyConfig(2, Inner(1))
+          )
+      }
+    }
+    test("paths"){
+      case class MyConfig(path: os.Path) derives configparse.Reader
 
-    //   val cfg1 = configparse.read(args=Map("path" -> "foo/bar"))
+      configparse.readResult[MyConfig](args=Map("path" -> "foo/bar")) ==> Success(
+        MyConfig(os.pwd / "foo" / "bar")
+      )
 
-    //   // pretend that the config was actually read from a file
-    //   // TODO: actually read from a file and avoid this hack
-    //   cfg1.fields.foreach(_._2.origins = List(configparse.Origin.File("/config", 1, 1)))
+      val cfg1 = configparse.readConfig(args=Map("path" -> "foo/bar"))
 
-    //   configparse.default.readResult[MyConfig](cfg1) ==> Success(
-    //     MyConfig(os.root / "config" / "foo" / "bar")
-    //   )
-    // }
+      // pretend that the config was actually read from a file
+      // TODO: actually read from a file and avoid this hack
+      cfg1.fields.foreach(_._2.origins = List(configparse.Origin.File("/config/dummy.yaml", 1, 1)))
+
+      configparse.readResult[MyConfig](config = cfg1) ==> Success(
+        MyConfig(os.root / "config" / "foo" / "bar")
+      )
+    }
   }
 
 }

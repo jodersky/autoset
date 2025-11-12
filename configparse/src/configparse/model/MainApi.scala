@@ -2,7 +2,7 @@ package configparse.model
 
 import configparse.formats
 
-trait MainApi:
+trait MainApi extends PlatformApi:
 
   /** Configuration readers for file extensions.
     *
@@ -147,7 +147,7 @@ trait MainApi:
     * @param args
     *   Command line arguments that should be interpreted as configurations.
     *
-    * @param dest
+    * @param config
     *   Root configuration object into which all other configuration will be
     *   merged. This can be set to build configurations through multiple calls
     *   to `read`. Defaults to an empty configuration.
@@ -164,7 +164,7 @@ trait MainApi:
       propsPrefix: String = null,
       propsBinds: Iterable[(String, String)] = Map(),
       args: Iterable[(String, String)] = Map(),
-      dest: Config = Config()
+      config: Config = Config()
   ): Config =
     def readfile(file: os.FilePath, reader: formats.FileReader) =
       val abs = os.Path(file, pwd)
@@ -196,7 +196,7 @@ trait MainApi:
             s"error parsing config file $pos: $message$line1$caret"
           )
         case formats.FileReader.Result.Success(obj) =>
-          dest.mergeFrom(obj)
+          config.mergeFrom(obj)
 
     val allReaders = defaultReaders // ++ readers
 
@@ -228,27 +228,27 @@ trait MainApi:
     if envPrefix != null then
       for (envKey, envValue) <- env if envKey.startsWith(envPrefix) do
         val configKey = envKeyReplacer(envKey.drop(envPrefix.length))
-        dest.set(configKey, envValue, Origin.Env(envKey))
+        config.set(configKey, envValue, Origin.Env(envKey))
 
     // explicit env
     for (envKey, configKey) <- envBinds do
       for envValue <- env.get(envKey) do
-        dest.set(configKey, envValue, Origin.Env(envKey))
+        config.set(configKey, envValue, Origin.Env(envKey))
 
     // automatic props
     if propsPrefix != null then
       for (propsKey, propsValue) <- props if propsKey.startsWith(propsPrefix) do
         val configKey = propsKey.drop(propsPrefix.length)
-        dest.set(configKey, propsValue, Origin.Props(propsKey))
+        config.set(configKey, propsValue, Origin.Props(propsKey))
 
     // explicit props
     for (propsKey, configKey) <- propsBinds do
       for propsValue <- props.get(propsKey) do
-        dest.set(configKey, propsValue, Origin.Props(propsKey))
+        config.set(configKey, propsValue, Origin.Props(propsKey))
 
     // args
-    for (argKey, argValue) <- args do dest.set(argKey, argValue, Origin.Arg())
+    for (argKey, argValue) <- args do config.set(argKey, argValue, Origin.Arg())
 
-    dest
+    config
 
   end readConfig

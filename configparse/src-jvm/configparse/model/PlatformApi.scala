@@ -17,13 +17,13 @@ trait PlatformApi:
       propsPrefix: String = null,
       propsBinds: Iterable[(String, String)] = Map(),
       args: Iterable[(String, String)] = Map(),
-      dest: Config = Config(),
+      config: Config = Config(),
       onPreUpdate: Set[os.Path] => Unit = _ => (),
       onUpdate: (Config, Config) => Unit,
       onError: ReadException => Unit
   ): java.io.Closeable =
 
-    @volatile var oldCfg = dest
+    @volatile var oldCfg = config
     def fn() =
       try
         val newCfg = readConfig(
@@ -38,7 +38,7 @@ trait PlatformApi:
           propsPrefix,
           propsBinds,
           args,
-          dest
+          config
         )
         onUpdate(oldCfg, newCfg)
         oldCfg = newCfg

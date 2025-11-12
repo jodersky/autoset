@@ -3,8 +3,8 @@ package configparse.derivation
 import configparse.model.Value
 import configparse.model.Config
 import configparse.model.Arr
+import configparse.model.Str
 import configparse.model.Path
-import configparse.model.Null
 import Result.Error
 import Result.Success
 
@@ -23,12 +23,19 @@ trait DerivationApi extends ReaderApi:
 
     def read(value: Value, path: Path): Result[A] = value match
       case cfg: Config => readImpl(cfg, path)
-      case cfg: Null   => readImpl(Config(), path)
-      case _ => Error(FieldError.TypeMismatch(path, value, "config object"))
+      case _: Arr      =>
+        Error(invalid =
+          Seq(Invalid(path, value, "expected a config object, found an array"))
+        )
+      case _: Str =>
+        Error(invalid =
+          Seq(Invalid(path, value, "expected a config object, found a string"))
+        )
 
     def readImpl(cfg: Config, path: Path): Result[A] =
       val fields = new Array[Any](fieldNames.length)
-      val errors = m.ArrayBuffer.empty[FieldError]
+      val missing = m.ArrayBuffer.empty[Path]
+      val invalid = m.ArrayBuffer.empty[Invalid]
       var i = 0
       while i < fields.length do
         val segment = scalaNameToConfigName(fieldNames(i))
@@ -36,24 +43,18 @@ trait DerivationApi extends ReaderApi:
           case None if fieldDefaults(i).isDefined =>
             fields(i) = fieldDefaults(i).get()
           case None =>
-            // errors += FieldError.Missing(path / segment)
-            fieldReaders(i).read(Null(), path :+ segment) match
-              case Result.Success(a)   => fields(i) = a
-              case Result.Error(errs*) => errors ++= errs
+            missing += path / segment
           case Some(value) =>
-            fieldReaders(i).read(value, path :+ segment) match
-              case Result.Success(a)   => fields(i) = a
-              case Result.Error(errs*) => errors ++= errs
+            fieldReaders(i).read(value, path / segment) match
+              case Result.Success(a)  => fields(i) = a
+              case Result.Error(m, i) =>
+                missing ++= m
+                invalid ++= i
         i += 1
 
-      if errors.isEmpty then
-        try Result.Success(instantiate(fields.toIndexedSeq))
-        catch
-          case ex: IllegalArgumentException =>
-            Error(
-              FieldError.RequirementFailed(path, cfg, ex)
-            )
-      else Result.Error(errors.toSeq*)
+      if missing.isEmpty && invalid.isEmpty then
+        Result.Success(instantiate(fields.toIndexedSeq))
+      else Result.Error(missing.toSeq, invalid.toSeq)
 
   // implicit class Derivable(p: Reader.type)
   extension (p: Reader.type)

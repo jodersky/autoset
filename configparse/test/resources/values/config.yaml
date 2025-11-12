@@ -3,7 +3,7 @@ foo:
     bar: baz
     nested:
         yo: ok
-    a:
+    a: null
     arr:
         - a
         - b

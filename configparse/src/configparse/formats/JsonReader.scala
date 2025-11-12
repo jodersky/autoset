@@ -4,7 +4,7 @@ import FileReader.Result
 import upickle.core.Visitor
 import configparse.util.TextUtils
 import java.io.InputStream
-import configparse.model.{Config, Null, Str, Value, Arr, Origin}
+import configparse.model.{Config, Str, Value, Arr, Origin}
 
 object JsonReader extends FileReader:
 
@@ -66,11 +66,7 @@ object JsonReader extends FileReader:
 
     override def visitArray(length: Int, index: Int) = ArrVisitor(index)
 
-    override def visitNull(index: Int): Value =
-      val v = Null()
-      val (rows, cols) = ls.posToRowAndCol(index)
-      v.origins = Origin.File(name, rows, cols) :: Nil
-      v
+    override def visitNull(index: Int): Value = visitString("null", index)
 
     override def visitFalse(index: Int): Value = visitString("false", index)
 

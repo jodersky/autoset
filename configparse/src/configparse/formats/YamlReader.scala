@@ -5,7 +5,7 @@ import yamlesque.Ctx
 import yamlesque.ObjectVisitor
 import yamlesque.ArrayVisitor
 import yamlesque.Visitor
-import configparse.model.{Config, Null, Str, Value, Arr, Origin}
+import configparse.model.{Config, Str, Value, Arr, Origin}
 
 object YamlReader extends FileReader:
 
@@ -56,9 +56,11 @@ object YamlReader extends FileReader:
       visitString(ctx, text)
 
     override def visitEmpty(ctx: Ctx): Value =
-      val n = Null()
-      n.origins = Origin.File(name, ctx.pos.line, ctx.pos.col) :: Nil
-      n
+      throw new yamlesque.ParseException(
+        ctx.pos,
+        "empty values are not supported",
+        ctx.line
+      )
 
     override def visitBlockStringFolded(ctx: Ctx, text: CharSequence): Value =
       visitString(ctx, text)
@@ -73,7 +75,6 @@ object YamlReader extends FileReader:
         yamlesque.Parser(stream, name).parseValue(0, ValueVisitor(name))
       value match
         case c: Config => Result.Success(c)
-        case _: Null   => Result.Success(Config())
         case other     => Result.Error("expected object")
     catch
       case ex: yamlesque.ParseException =>
