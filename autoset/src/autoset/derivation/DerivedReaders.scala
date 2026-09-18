@@ -31,7 +31,8 @@ trait DerivedReaders extends ReadersApi:
   /** Derive a reader for `A`, which is one of:
     *
     *   - A case class. The reader expects an object, and reads each field with
-    *     the reader for its type, which must be available as a given. A field
+    *     the reader for its type, which must be available as a given (except
+    *     for unions of string literals, whose reader is derived). A field
     *     that is missing from the object takes its default value if it has
     *     one, is `None` if it is an `Option`, and is an error otherwise. Keys
     *     of the object that don't match any field are warned about, and
@@ -224,6 +225,11 @@ object DerivedReaders:
         val reader = readWith.map(readWithArg(_, param.name, cls, fieldTpe)).getOrElse {
           Implicits.search(readerOf(fieldTpe)) match
             case success: ImplicitSearchSuccess => success.tree
+            // a union of string literals written as the field's type has no
+            // given reader, so derive one here
+            case _: ImplicitSearchFailure if literals(fieldTpe).isDefined =>
+              (fieldTpe.asType, readerOf(fieldTpe).asType) match
+                case ('[t], '[r]) => readerForImpl[t, r](api).asTerm
             case failure: ImplicitSearchFailure =>
               report.errorAndAbort(
                 s"no given instance of Reader[${fieldTpe.show(using short)}] found for field " +

@@ -61,6 +61,9 @@ case class Wolf(pack: Int) extends Animal
 
 type Mode = "fast" | "safe"
 
+// a union written as the field's type, without a given reader
+case class InlineUnion(level: "info" | "warn" = "info") derives autoset.Reader
+
 case class Settings(storage: Storage, level: Level = Level.Info, mode: Mode = "safe")
 
 enum Color derives autoset.Reader:
@@ -392,6 +395,17 @@ object DerivedReadersTest extends TestSuite:
       assert(read[Mode](s("fast"))._1.get == "fast")
       assert(read[Mode](s(" safe "))._1.get == "safe")
       assert(read[Mode](s("slow"))._2 == "error: app.conf:1:1: expected one of 'fast', 'safe', found 'slow'\n")
+    }
+    test("string literals as a field type") {
+      def readInline(v: Value) =
+        val reporter = Reporter()
+        (summon[autoset.Reader[InlineUnion]].read(v, Vector.empty, reporter), reporter.render)
+      assert(readInline(obj(file(1))("level" -> s("warn"))) == (Some(InlineUnion("warn")), ""))
+      assert(readInline(obj(file(1))()) == (Some(InlineUnion("info")), ""))
+      assert(
+        readInline(obj(file(1))("level" -> s("debug", 2))) ==
+          (None, "error: app.conf:2:1: expected one of 'info', 'warn' for 'level', found 'debug'\n")
+      )
     }
     test("sums as fields") {
       val v = obj(file(1))(

@@ -63,3 +63,6 @@ case class CheckAnnotated(
     @secret @autoset.deprecatedNames("pass") password: String,
     @autoset.readWith(CheckHex.int) color: Int
 ) derives readers.Reader
+
+// a union of string literals as a field type, without a given reader
+case class CheckInlineUnion(level: "info" | "warn" = "info", mode: "a" | "b") derives autoset.Reader
