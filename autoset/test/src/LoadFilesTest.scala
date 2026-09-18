@@ -33,7 +33,7 @@ object LoadFilesTest extends TestSuite:
       props = props,
       propsPrefix = propsPrefix,
       propsBinds = propsBinds,
-      reporter = Reporter(java.io.PrintStream(out))
+      reporter = Reporter.printing(java.io.PrintStream(out))
     )
     val config = result.fold("(failed)")(_.pretty())
     DiffTools.assertNoDiff(root / s"$name.out", s"${out}---\n$config\n")

@@ -6,7 +6,9 @@ export model.LitKind
 export model.Null
 export model.Obj
 export model.Origin
+export model.Diagnostic
 export model.Reporter
+export model.Severity
 export model.Str
 export model.Value
 

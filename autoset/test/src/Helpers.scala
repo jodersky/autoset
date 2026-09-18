@@ -16,4 +16,4 @@ object Helpers:
 
   /** Merge `from` into `into`, discarding any warnings. */
   def merge(into: Obj, from: Obj): Unit =
-    autoset.merge(into, from, Reporter(java.io.PrintStream(java.io.ByteArrayOutputStream())))
+    autoset.merge(into, from, Reporter())

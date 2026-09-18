@@ -88,7 +88,7 @@ object DerivedReadersTest extends TestSuite:
   /** Read `value` at the root, returning the result, the value to show and any output. */
   def read[A](value: Value)(using reader: Reader[A]): (Option[(A, Value)], String) =
     val out = java.io.ByteArrayOutputStream()
-    val reporter = Reporter(java.io.PrintStream(out))
+    val reporter = Reporter.printing(java.io.PrintStream(out))
     val result = reader.read(value, Vector.empty, reporter)
     assert(result.isEmpty == reporter.hasErrors)
     (result, out.toString)
@@ -196,14 +196,14 @@ object DerivedReadersTest extends TestSuite:
       object other extends DefaultReaders
       val reader = other.readerFor[Db]
       val out = java.io.ByteArrayOutputStream()
-      val reporter = Reporter(java.io.PrintStream(out))
+      val reporter = Reporter.printing(java.io.PrintStream(out))
       val result = reader.read(obj(file(1))("host" -> s("h")), Vector.empty, reporter)
       assert(result.get._1 == Db("h"))
     }
     test("derives") {
       def readDefault[A](value: Value)(using reader: autoset.Reader[A]) =
         val out = java.io.ByteArrayOutputStream()
-        (reader.read(value, Vector.empty, Reporter(java.io.PrintStream(out))), out.toString)
+        (reader.read(value, Vector.empty, Reporter.printing(java.io.PrintStream(out))), out.toString)
 
       val (result, out) = readDefault[Server](obj(file(1))("host" -> s("h"), "key" -> s("k", 2)))
       assert(result.get._1 == Server("h", 8080, "k"))
@@ -218,7 +218,7 @@ object DerivedReadersTest extends TestSuite:
       val reader = summon[autoset.Reader[Service]]
       val out = java.io.ByteArrayOutputStream()
       val v = obj(file(1))("name" -> s("svc"), "server" -> obj(file(2))("port" -> s("x", 3)))
-      val result = reader.read(v, Vector.empty, Reporter(java.io.PrintStream(out)))
+      val result = reader.read(v, Vector.empty, Reporter.printing(java.io.PrintStream(out)))
       assert(result.isEmpty)
       assert(out.toString.linesIterator.toList == List(
         "error: app.conf:2:1: missing required field 'server.host'",
@@ -256,7 +256,7 @@ object DerivedReadersTest extends TestSuite:
     test("overridden field names") {
       def readSnake[A](value: Value)(using reader: snakeReaders.Reader[A]) =
         val out = java.io.ByteArrayOutputStream()
-        (reader.read(value, Vector.empty, Reporter(java.io.PrintStream(out))), out.toString)
+        (reader.read(value, Vector.empty, Reporter.printing(java.io.PrintStream(out))), out.toString)
 
       val v = obj(file(1))(
         "jdbc_url" -> s("jdbc:h2:mem"),
@@ -386,7 +386,7 @@ object DerivedReadersTest extends TestSuite:
         given Reader[Level] = readerFor[Level]
       def readKebab[A](v: Value)(using r: kebabReaders.Reader[A]) =
         val out = java.io.ByteArrayOutputStream()
-        (r.read(v, Vector.empty, Reporter(java.io.PrintStream(out))).map(_._1), out.toString)
+        (r.read(v, Vector.empty, Reporter.printing(java.io.PrintStream(out))).map(_._1), out.toString)
 
       assert(readKebab[Level](s("debug")) == (Some(Level.Debug), ""))
       assert(readKebab[Storage](obj(file(1))("kind" -> s("s3"), "bucket" -> s("b"))) == (Some(S3("b")), ""))
@@ -397,7 +397,7 @@ object DerivedReadersTest extends TestSuite:
     }
     test("derives on an enum") {
       val out = java.io.ByteArrayOutputStream()
-      val result = summon[autoset.Reader[Color]].read(s("Green"), Vector.empty, Reporter(java.io.PrintStream(out)))
+      val result = summon[autoset.Reader[Color]].read(s("Green"), Vector.empty, Reporter.printing(java.io.PrintStream(out)))
       assert(result.get._1 == Color.Green)
     }
     test("compile errors") {

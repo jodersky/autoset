@@ -9,7 +9,7 @@ object JsonParserTest extends TestSuite:
   /** Parse `text`, returning the result and everything reported. */
   def parse(text: String): (Option[Obj], String) =
     val out = java.io.ByteArrayOutputStream()
-    val reporter = Reporter(java.io.PrintStream(out))
+    val reporter = Reporter.printing(java.io.PrintStream(out))
     val in = java.io.ByteArrayInputStream(text.getBytes("utf-8"))
     val result = JsonParser.parse("a.json", in, text.length, reporter)
     assert(result.isEmpty == reporter.hasErrors)

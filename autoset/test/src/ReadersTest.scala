@@ -14,7 +14,7 @@ object ReadersTest extends TestSuite:
   /** Read `value` at path `a.b`, returning the result and any output. */
   def read[A](value: Value)(using reader: Reader[A]): (Option[A], String) =
     val out = java.io.ByteArrayOutputStream()
-    val reporter = Reporter(java.io.PrintStream(out))
+    val reporter = Reporter.printing(java.io.PrintStream(out))
     val result = reader.read(value, Vector("a", "b"), reporter)
     // composite readers return a rebuilt copy, so compare structurally
     result.foreach((_, shown) => assert(shown == value))
@@ -68,7 +68,7 @@ object ReadersTest extends TestSuite:
     }
     test("root path") {
       val out = java.io.ByteArrayOutputStream()
-      readers.IntReader.read(str("x", env("X")), Vector.empty, Reporter(java.io.PrintStream(out)))
+      readers.IntReader.read(str("x", env("X")), Vector.empty, Reporter.printing(java.io.PrintStream(out)))
       assert(out.toString == "error: env X: expected an integer, found 'x'\n")
     }
     test("string") {
@@ -239,7 +239,7 @@ object ReadersTest extends TestSuite:
       def split[A](raw: String)(using reader: Reader[A]): (Option[(A, Value)], String) =
         val out = java.io.ByteArrayOutputStream()
         val value = Str(raw, LitKind.Unknown, List(env("APP_X")))
-        val result = reader.read(value, Vector("a", "b"), Reporter(java.io.PrintStream(out)))
+        val result = reader.read(value, Vector("a", "b"), Reporter.printing(java.io.PrintStream(out)))
         (result, out.toString)
 
       assert(split[List[String]]("a, b ,c")._1.map(_._1) == Some(List("a", "b", "c")))
@@ -384,7 +384,7 @@ object ReadersTest extends TestSuite:
         val result = readers.OsPathReader.read(
           Str(raw, LitKind.String, List(origin)),
           Vector("a", "b"),
-          Reporter(java.io.PrintStream(out))
+          Reporter.printing(java.io.PrintStream(out))
         )
         (result.map(_._1), out.toString)
 
@@ -425,7 +425,7 @@ object ReadersTest extends TestSuite:
     }
     test("project") {
       val out = java.io.ByteArrayOutputStream()
-      val reporter = Reporter(java.io.PrintStream(out))
+      val reporter = Reporter.printing(java.io.PrintStream(out))
       assert(readers.project[Int](str("5", file(1)), reporter).map(_._1) == Some(5))
       assert(readers.project[Int](str("x", file(1)), reporter).isEmpty)
       assert(reporter.errors == 1)

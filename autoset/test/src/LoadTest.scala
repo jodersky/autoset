@@ -33,7 +33,7 @@ object LoadTest extends TestSuite:
       props = props,
       propsPrefix = propsPrefix,
       propsBinds = propsBinds,
-      reporter = if reporter != null then reporter else Reporter(java.io.PrintStream(out))
+      reporter = if reporter != null then reporter else Reporter.printing(java.io.PrintStream(out))
     )
     (result, out.toString)
 
@@ -202,7 +202,7 @@ object LoadTest extends TestSuite:
       }
       test("earlier errors of a shared reporter") {
         val out = java.io.ByteArrayOutputStream()
-        val reporter = Reporter(java.io.PrintStream(out))
+        val reporter = Reporter.printing(java.io.PrintStream(out))
         reporter.error("unrelated")
         val (result, _) = load(Seq("a.json" -> """{"a": 1}"""), Seq("a.json"), reporter = reporter)
         assert(result.isDefined)
@@ -297,7 +297,7 @@ object LoadTest extends TestSuite:
         envPrefix = "APP_",
         props = Map(),
         init = init,
-        reporter = Reporter(java.io.PrintStream(out))
+        reporter = Reporter.printing(java.io.PrintStream(out))
       )
       assert(result.get eq init)
       assert(init.fields.keys.toList == List("a", "b"))
@@ -314,7 +314,7 @@ object LoadTest extends TestSuite:
         env = Map("APP_CACHE" -> "cache"),
         envPrefix = "APP_",
         props = Map(),
-        reporter = Reporter(java.io.PrintStream(out))
+        reporter = Reporter.printing(java.io.PrintStream(out))
       ).get
 
       def resolve(value: Value) =

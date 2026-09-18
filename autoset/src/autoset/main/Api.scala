@@ -158,7 +158,9 @@ trait Api extends autoset.derivation.ReadersApi:
     *   in place, even if loading fails.
     *
     * @param reporter
-    *   Where to report warnings and errors.
+    *   Where to report warnings and errors. By default, they are printed to
+    *   stderr as they are reported. Pass a `Reporter()` to collect them
+    *   instead, and render them when convenient.
     *
     * @return
     *   The merged configuration, or `None` if any errors were reported. All
@@ -181,7 +183,7 @@ trait Api extends autoset.derivation.ReadersApi:
       collection.mutable.LinkedHashMap.empty,
       List(model.Origin.Default) // TODO: use special "root" origin?
     ),
-    reporter: model.Reporter = model.Reporter()
+    reporter: model.Reporter = model.Reporter.printing()
   ): Option[model.Obj] =
 
     // the reporter may be shared, so only count errors from this call

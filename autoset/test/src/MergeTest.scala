@@ -112,7 +112,7 @@ object MergeTest extends TestSuite:
     test("type change warnings") {
       def warnings(o1: Obj, o2: Obj): String =
         val out = java.io.ByteArrayOutputStream()
-        autoset.merge(o1, o2, Reporter(java.io.PrintStream(out)))
+        autoset.merge(o1, o2, Reporter.printing(java.io.PrintStream(out)))
         out.toString
       test("object replaced by value") {
         val out = warnings(
