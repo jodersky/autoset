@@ -76,7 +76,7 @@ object JsonParser extends FormatParser:
         case o: Obj => Some(o)
         case other =>
           val idx = other.effectiveOrigin match
-            case Origin.File(_, idx, _, _) => idx
+            case Origin.File(_, idx, _, _, _) => idx
             case _ => 0
           reporter.error("expected a top-level JSON object", ls.origin(name, idx), ls.line(idx))
           None

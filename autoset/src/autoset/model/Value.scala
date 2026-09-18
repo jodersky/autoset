@@ -37,7 +37,7 @@ object Value:
     * is the useful part.
     */
   private def source(o: Origin): Option[String] = o match
-    case Origin.File(path, _, _, _) => Some(path)
+    case Origin.File(path, _, _, _, _) => Some(path)
     case Origin.Code(path, _, _, _) => Some(s"code $path")
     case Origin.Default => Some("default")
     case _ => None
@@ -150,7 +150,9 @@ enum Origin:
   // `line` and `col` are 1-based and only used for display; `col` counts
   // characters, not bytes.
   // Any of them is -1 when unknown, since not all formats report positions.
-  case File(path: String, idx: Int, line: Int, col: Int)
+  // `path` is for display, and may be relative; `absolute` is the file's
+  // absolute path, if known (it is set for files loaded with `Api.load`).
+  case File(path: String, idx: Int, line: Int, col: Int, absolute: Option[String] = None)
   case Env(name: String)
   case Props(name: String)
   case Arg()
@@ -158,7 +160,7 @@ enum Origin:
   case Default // from the case class parameter
 
   def pretty: String = this match
-    case File(path, _, line, col) => Origin.location(path, line, col)
+    case File(path, _, line, col, _) => Origin.location(path, line, col)
     case Env(name) => s"env $name"
     case Props(name) => s"prop $name"
     case Arg() => "arg"

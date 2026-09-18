@@ -38,7 +38,7 @@ class Reporter(val stream: java.io.PrintStream = System.err):
     pos.foreach(p => stream.print(p.pretty + ": "))
     stream.println(message)
     val col = pos match
-      case Some(Origin.File(_, _, _, col)) => col
+      case Some(Origin.File(_, _, _, col, _)) => col
       case Some(Origin.Code(_, _, _, col)) => col
       case _ => -1
     if line.nonEmpty then

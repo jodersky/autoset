@@ -213,7 +213,9 @@ trait Api extends autoset.derivation.ReadersApi:
             // keep parsing after an error, to report all of them at once, but
             // don't bother merging
             for obj <- parser.parse(name, stream, os.stat(file).size.toInt, reporter)
-            if !failed do merge(init, obj, reporter)
+            if !failed do
+              setAbsolute(obj, name, file)
+              merge(init, obj, reporter)
           finally stream.close()
     if failed then return None
 
@@ -240,6 +242,19 @@ trait Api extends autoset.derivation.ReadersApi:
     //   setConfig(init, argKey, Str(propsValue, LitKind.Unknown, List(Origin.Props(propsKey))), reporter)
 
     if failed then None else Some(init)
+
+  /** Record the absolute path of `file` in the origins from it in `value`,
+    * which a parser created with `name` as the file's path.
+    */
+  private def setAbsolute(value: model.Value, name: String, file: os.Path): Unit =
+    value.origins = value.origins.map {
+      case o: model.Origin.File if o.path == name => o.copy(absolute = Some(file.toString))
+      case o => o
+    }
+    value match
+      case o: model.Obj => o.fields.values.foreach(setAbsolute(_, name, file))
+      case a: model.Arr => a.values.foreach(setAbsolute(_, name, file))
+      case _ =>
 
   /** Merge the fields of `from` into `into`.
     *

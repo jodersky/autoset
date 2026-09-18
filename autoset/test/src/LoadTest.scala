@@ -302,4 +302,33 @@ object LoadTest extends TestSuite:
       assert(result.get eq init)
       assert(init.fields.keys.toList == List("a", "b"))
     }
+    test("relative paths with a custom pwd") {
+      // `pwd` differs from the process's working directory, so paths from
+      // files must be resolved with the files' absolute paths
+      val dir = os.temp.dir()
+      os.write(dir / "conf" / "app.json", """{"data": "db", "nested": {"logs": ["../logs"]}}""", createFolders = true)
+      val out = java.io.ByteArrayOutputStream()
+      val result = autoset.load(
+        Seq(os.FilePath("conf")),
+        pwd = dir,
+        env = Map("APP_CACHE" -> "cache"),
+        envPrefix = "APP_",
+        props = Map(),
+        reporter = Reporter(java.io.PrintStream(out))
+      ).get
+
+      def resolve(value: Value) =
+        autoset.default.OsPathReader.read(value, Vector.empty, Reporter()).get._1
+      assert(resolve(result.fields("data")) == dir / "conf" / "db")
+      val logs = result.fields("nested").asInstanceOf[Obj].fields("logs").asInstanceOf[Arr].values.head
+      assert(resolve(logs) == dir / "logs")
+      // values from the environment are still relative to the working directory
+      assert(resolve(result.fields("cache")) == os.pwd / "cache")
+
+      // file names are still shown relative to `pwd`
+      assert(result.fields("data").origins == List(
+        Origin.File("conf/app.json", 9, 1, 10, Some((dir / "conf" / "app.json").toString))
+      ))
+      assert(result.fields("data").effectiveOrigin.pretty == "conf/app.json:1:10")
+    }
   }

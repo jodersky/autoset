@@ -11,6 +11,9 @@ export model.Str
 export model.Value
 
 export main.Api
-object default extends main.Api
+export derivation.ReadersApi
+export derivation.DefaultReaders
+export derivation.ReaderUtils
+object default extends main.Api with derivation.DefaultReaders
 
 export default.*
