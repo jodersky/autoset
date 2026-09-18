@@ -53,3 +53,13 @@ enum CheckShape derives autoset.Reader:
 type CheckMode = "a" | "b"
 val modeReader = readers.readerFor[CheckMode]
 case class CheckSettings(storage: CheckStorage, level: CheckLevel, shape: CheckShape) derives autoset.Reader
+
+// field annotations
+object CheckHex:
+  val int: readers.Reader[Int] = (value, path, reporter) => None
+case class CheckAnnotated(
+    @autoset.name("db_host") host: String,
+    @autoset.deprecatedNames("p", "prt") port: Int = 1,
+    @secret @autoset.deprecatedNames("pass") password: String,
+    @autoset.readWith(CheckHex.int) color: Int
+) derives readers.Reader

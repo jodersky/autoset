@@ -53,6 +53,36 @@ object ReaderUtils:
     reporter.error(s"expected $expected$at, found ${describe(value)}", value.effectiveOrigin)
     None
 
+  /** Look up the value of a field whose key is `name`, and which used to be
+    * at the `deprecated` keys, in `obj`, returning the key it is at and its
+    * value.
+    *
+    * A value at a deprecated key is warned about. If more than one key is
+    * set, the first one of `name` and `deprecated` is used, and the others
+    * are ignored with a warning, and marked as unknown so that they are not
+    * shown. All the values are marked as secret if `secret`.
+    */
+  def lookupField(
+      obj: Obj,
+      name: String,
+      deprecated: List[String],
+      secret: Boolean,
+      path: Vector[String],
+      reporter: Reporter
+  ): Option[(String, Value)] =
+    def show(key: String) = (path :+ key).mkString(".")
+    val found = (name :: deprecated).flatMap(key => obj.fields.get(key).map(key -> _))
+    if secret then found.foreach((_, v) => v.markSecret())
+    for (key, v) <- found.headOption if key != name do
+      reporter.warn(s"key '${show(key)}' is deprecated, use '${show(name)}' instead", v.effectiveOrigin)
+    for (key, v) <- found.drop(1) do
+      v.unknown = true
+      reporter.warn(
+        s"key '${show(key)}' is deprecated, and ignored since '${show(found.head._1)}' is set",
+        v.effectiveOrigin
+      )
+    found.headOption
+
   /** `thisIsKebabCase => this-is-kebab-case` */
   def kebabify(camelCase: String): String = separate(camelCase, '-')
 

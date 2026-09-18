@@ -2,7 +2,7 @@ package test
 
 import autoset.derivation.DefaultReaders
 import autoset.model.*
-import autoset.secret
+import autoset.{deprecatedNames, name, readWith, secret}
 import utest.*
 
 import Helpers.*
@@ -26,6 +26,18 @@ case class Optional(name: String, nick: Option[String], age: Option[Int] = Some(
 case class SecretPort(@secret port: Int)
 case class SecretList(@secret keys: List[Int])
 case class Pool(maxSize: Int, minIdle: Int = 0)
+case class Renamed(@name("db_host") host: String, dbPort: Int = 1)
+case class Moved(@deprecatedNames("hostname", "server") host: String, @deprecatedNames("p") port: Int = 1)
+case class MovedSecret(@secret @deprecatedNames("pass") password: String)
+
+object Hex:
+  /** Reads integers written in hexadecimal. */
+  val int: DerivedReadersTest.readers.Reader[Int] = (value, path, reporter) =>
+    value match
+      case Str(raw, _, _) if raw.nonEmpty && raw.forall(Character.digit(_, 16) >= 0) =>
+        Some(Integer.parseInt(raw, 16))
+      case _ => autoset.derivation.ReaderUtils.mismatch("a hexadecimal number", value, path, reporter)
+case class Rgb(@readWith(Hex.int) rgb: Int, alpha: Int = 255)
 case class Database(jdbcUrl: String, connectionPool: Pool)
 
 enum Level:
@@ -78,6 +90,10 @@ object DerivedReadersTest extends TestSuite:
     given Reader[Animal] = readerFor[Animal]
     given Reader[Mode] = readerFor[Mode]
     given Reader[Settings] = readerFor[Settings]
+    given Reader[Renamed] = readerFor[Renamed]
+    given Reader[Moved] = readerFor[Moved]
+    given Reader[MovedSecret] = readerFor[MovedSecret]
+    given Reader[Rgb] = readerFor[Rgb]
 
   import readers.{Reader, given}
 
@@ -85,6 +101,7 @@ object DerivedReadersTest extends TestSuite:
   object snakeReaders extends DefaultReaders:
     override def fieldName(name: String) = autoset.derivation.ReaderUtils.snakify(name)
     given Reader[Pool] = readerFor[Pool]
+    given Reader[Renamed] = readerFor[Renamed]
     given Reader[Database] = readerFor[Database]
 
   /** Read `value` at the root, returning the result and any output. */
@@ -413,6 +430,77 @@ object DerivedReadersTest extends TestSuite:
       val result = summon[autoset.Reader[Color]].read(s("Green"), Vector.empty, Reporter.printing(java.io.PrintStream(out)))
       assert(result.get == Color.Green)
     }
+    test("name") {
+      assert(read[Renamed](obj(file(1))("db_host" -> s("h"), "dbPort" -> s("2")))._1.get == Renamed("h", 2))
+      val (result, out) = read[Renamed](obj(file(1))("host" -> s("h", 2)))
+      assert(result.isEmpty)
+      assert(
+        out ==
+          """error: app.conf:1:1: missing required field 'db_host'
+            |warning: app.conf:2:1: unknown key 'host'
+            |""".stripMargin
+      )
+      // takes precedence over `fieldName`
+      def readSnake(v: Value) =
+        summon[snakeReaders.Reader[Renamed]].read(v, Vector.empty, Reporter())
+      assert(readSnake(obj(file(1))("db_host" -> s("h"), "db_port" -> s("2"))) == Some(Renamed("h", 2)))
+    }
+    test("deprecated names") {
+      // the current key
+      assert(read[Moved](obj(file(1))("host" -> s("h"))) == (Some(Moved("h")), ""))
+
+      // a deprecated key
+      val old = obj(file(1))("hostname" -> s("h", 2), "p" -> s("3", 3))
+      assert(
+        read[Moved](old) == (
+          Some(Moved("h", 3)),
+          """warning: app.conf:2:1: key 'hostname' is deprecated, use 'host' instead
+            |warning: app.conf:3:1: key 'p' is deprecated, use 'port' instead
+            |""".stripMargin
+        )
+      )
+      assert(!old.fields("hostname").unknown)
+
+      // the current key takes precedence, then the first deprecated one
+      val both = obj(file(1))("server" -> s("s", 2), "host" -> s("h", 3), "hostname" -> s("n", 4))
+      assert(
+        read[Moved](both) == (
+          Some(Moved("h")),
+          """warning: app.conf:4:1: key 'hostname' is deprecated, and ignored since 'host' is set
+            |warning: app.conf:2:1: key 'server' is deprecated, and ignored since 'host' is set
+            |""".stripMargin
+        )
+      )
+      assert(both.fields("server").unknown, both.fields("hostname").unknown, !both.fields("host").unknown)
+      val deprecatedOnly = obj(file(1))("server" -> s("s", 2), "hostname" -> s("n", 3))
+      assert(read[Moved](deprecatedOnly)._1 == Some(Moved("n")))
+
+      // errors are at the key which was used
+      assert(
+        read[Moved](obj(file(1))("host" -> s("h"), "p" -> s("x", 2)))._2 ==
+          """warning: app.conf:2:1: key 'p' is deprecated, use 'port' instead
+            |error: app.conf:2:1: expected an integer for 'p', found 'x'
+            |""".stripMargin
+      )
+    }
+    test("deprecated secret") {
+      val v = obj(file(1))("password" -> s("new"), "pass" -> s("old", 2))
+      assert(read[MovedSecret](v)._1 == Some(MovedSecret("new")))
+      // the ignored value is not shown either
+      assert(v.fields("pass").secret, v.fields("pass").unknown)
+      assert(v.pretty() == "{ // app.conf\n  password: <secret>,\n  pass: <secret>\n}")
+    }
+    test("readWith") {
+      assert(read[Rgb](obj(file(1))("rgb" -> s("ff8800")))._1 == Some(Rgb(0xff8800)))
+      assert(
+        read[Rgb](obj(file(1))("rgb" -> s("12", 2), "alpha" -> s("12", 3)))._1 ==
+          Some(Rgb(0x12, 12))
+      )
+      assert(
+        read[Rgb](obj(file(1))("rgb" -> s("red", 2)))._2 ==
+          "error: app.conf:2:1: expected a hexadecimal number for 'rgb', found 'red'\n"
+      )
+    }
     test("compile errors") {
       import scala.compiletime.testing.typeCheckErrors
       val notCaseClass = typeCheckErrors("readers.readerFor[String]").map(_.message)
@@ -429,6 +517,18 @@ object DerivedReadersTest extends TestSuite:
         typeCheckErrors("readers.readerFor[Generic[Int]]").map(_.message) ==
           List("cannot derive a reader for Generic[Int], since generic sealed types are not supported")
       )
+      val wrongReader = typeCheckErrors(
+        "{ case class C(@readWith(Hex.int) s: String); readers.readerFor[C] }"
+      ).map(_.message)
+      assert(wrongReader == List("the reader given with @readWith for field 's' of C reads Int, not String"))
+      val clash = typeCheckErrors(
+        "{ case class C(@name(\"a\") x: Int, @deprecatedNames(\"a\") y: Int); readers.readerFor[C] }"
+      ).map(_.message)
+      assert(clash == List("cannot derive a reader for C, since more than one of the fields of C has the key 'a'"))
+      val notLiteral = typeCheckErrors(
+        "{ val n = \"a\"; case class C(@name(n) x: Int); readers.readerFor[C] }"
+      ).map(_.message)
+      assert(notLiteral == List("expected a string literal in @name"))
       val notAllCases = typeCheckErrors("readers.readerFor[NotAllCases]").map(_.message)
       assert(
         notAllCases == List(

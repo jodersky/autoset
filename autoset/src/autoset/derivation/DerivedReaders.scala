@@ -169,7 +169,45 @@ object DerivedReaders:
         default: Option[Term],
         annotations: List[Term]
     ):
+      /** The annotations of type `T`. */
+      def annotated[T: Type]: List[Term] = annotations.filter(_.tpe <:< TypeRepr.of[T])
+
+      /** The key given with `@name`, if any. */
+      val key: Option[String] = annotated[autoset.name].flatMap(stringArgs).headOption
+
+      /** The keys given with `@deprecatedNames`. */
+      val deprecated: List[String] = annotated[autoset.deprecatedNames].flatMap(stringArgs)
+
       def has[T: Type]: Boolean = annotations.exists(_.tpe <:< TypeRepr.of[T])
+
+    /** The arguments of the annotation `annot`, which must be string literals. */
+    def stringArgs(annot: Term): List[String] =
+      def strings(t: Term): List[String] = t match
+        case Literal(StringConstant(s)) => List(s)
+        case Typed(e, _) => strings(e)
+        case Repeated(es, _) => es.flatMap(strings)
+        case NamedArg(_, e) => strings(e)
+        case Inlined(_, Nil, e) => strings(e)
+        case _ => report.errorAndAbort(s"expected a string literal in @${annot.tpe.typeSymbol.name}", t.pos)
+      annot match
+        case Apply(_, args) => args.flatMap(strings)
+        case _ => Nil
+
+    /** The argument of a `@readWith` annotation, checked to read `fieldTpe`. */
+    def readWithArg(annot: Term, field: String, cls: TypeRepr, fieldTpe: TypeRepr): Term =
+      val arg = annot match
+        case Apply(_, List(NamedArg(_, arg))) => arg
+        case Apply(_, List(arg)) => arg
+        case _ => report.errorAndAbort("unexpected @readWith annotation", annot.pos)
+      arg.tpe.widen.baseType(readerSym) match
+        case AppliedType(_, List(t)) if t =:= fieldTpe => arg
+        case AppliedType(_, List(t)) =>
+          report.errorAndAbort(
+            s"the reader given with @readWith for field '$field' of ${cls.show(using short)} " +
+              s"reads ${t.show(using short)}, not ${fieldTpe.show(using short)}",
+            arg.pos
+          )
+        case _ => report.errorAndAbort("@readWith expects a reader", arg.pos)
 
     /** The fields of the case class `cls`. */
     def fieldsOf(cls: TypeRepr): List[FieldInfo] =
@@ -179,17 +217,20 @@ object DerivedReaders:
         case Nil => Nil
         case _ => fail(s"since ${cls.show(using short)} has more than one parameter list")
 
-      for ((param, field), i) <- params.zip(sym.caseFields).zipWithIndex yield
+      val fields = for ((param, field), i) <- params.zip(sym.caseFields).zipWithIndex yield
         val fieldTpe = cls.memberType(field)
 
-        val reader = Implicits.search(readerOf(fieldTpe)) match
-          case success: ImplicitSearchSuccess => success.tree
-          case failure: ImplicitSearchFailure =>
-            report.errorAndAbort(
-              s"no given instance of Reader[${fieldTpe.show(using short)}] found for field " +
-                s"'${param.name}' of ${cls.show(using short)}: ${failure.explanation}",
-              param.pos.getOrElse(Position.ofMacroExpansion)
-            )
+        val readWith = param.annotations.find(_.tpe <:< TypeRepr.of[autoset.readWith])
+        val reader = readWith.map(readWithArg(_, param.name, cls, fieldTpe)).getOrElse {
+          Implicits.search(readerOf(fieldTpe)) match
+            case success: ImplicitSearchSuccess => success.tree
+            case failure: ImplicitSearchFailure =>
+              report.errorAndAbort(
+                s"no given instance of Reader[${fieldTpe.show(using short)}] found for field " +
+                  s"'${param.name}' of ${cls.show(using short)}: ${failure.explanation}",
+                param.pos.getOrElse(Position.ofMacroExpansion)
+              )
+        }
 
         val default = Option.when(param.flags.is(Flags.HasDefault)) {
           val companion = sym.companionModule
@@ -200,6 +241,12 @@ object DerivedReaders:
         }
 
         FieldInfo(param.name, fieldTpe, reader, default, param.annotations)
+
+      // keys given literally must not clash; others depend on `fieldName`
+      val literal = fields.flatMap(f => f.key.toList ++ f.deprecated)
+      for (key, dups) <- literal.groupBy(identity) if dups.size > 1 do
+        fail(s"since more than one of the fields of ${cls.show(using short)} has the key '$key'")
+      fields
 
     def isCaseClass(sym: Symbol) = sym.isClassDef && sym.flags.is(Flags.Case)
 
@@ -231,15 +278,29 @@ object DerivedReaders:
         reporter: Expr[Reporter]
     )(using Quotes): Expr[Unit] =
       def fail = assign(ok, Literal(BooleanConstant(false)))
+      val secret = field.has[autoset.secret]
+      val lookup: Expr[Option[(String, Value)]] =
+        if field.deprecated.isEmpty then '{ $obj.fields.get($name).map(v => ($name, v)) }
+        else
+          '{
+            ReaderUtils.lookupField(
+              $obj,
+              $name,
+              ${ Expr(field.deprecated) },
+              ${ Expr(secret) },
+              $path,
+              $reporter
+            )
+          }
       '{
-        $obj.fields.get($name) match
-          case Some(v) =>
+        $lookup match
+          case Some((key, v)) =>
             // before reading, so that errors don't show it
-            ${ if field.has[autoset.secret] then '{ v.markSecret() } else '{ () } }
+            ${ if secret then '{ v.markSecret() } else '{ () } }
             ${
               Select
                 .unique(field.reader, "read")
-                .appliedToArgs(List('v.asTerm, '{ $path :+ $name }.asTerm, reporter.asTerm))
+                .appliedToArgs(List('v.asTerm, '{ $path :+ key }.asTerm, reporter.asTerm))
                 .asExprOf[Option[T]]
             } match
               case Some(a) => ${ assign(x, 'a.asTerm) }
@@ -293,7 +354,7 @@ object DerivedReaders:
           field.tpe.asType match
             case '[t] =>
               '{
-                val name = $api.fieldName(${ Expr(field.name) })
+                val name = ${ field.key.fold('{ $api.fieldName(${ Expr(field.name) }) })(Expr(_)) }
                 var x: t = null.asInstanceOf[t]
                 ${ readField[t](field, 'name, 'x, obj, ok, path, reporter) }
                 ${ readFields(i + 1, 'x.asTerm :: vars, 'name :: nameExprs, ok) }
@@ -305,7 +366,7 @@ object DerivedReaders:
             .appliedToArgs(vars.reverse)
             .asExprOf[T]
           '{
-            val names = ${ Expr.ofList(nameExprs.reverse) }
+            val names = ${ Expr.ofList(nameExprs.reverse) } ++ ${ Expr(fields.flatMap(_.deprecated)) }
             ${
               val isTag: Expr[String => Boolean] = tag match
                 case Some(t) => '{ (key: String) => key == $t }
