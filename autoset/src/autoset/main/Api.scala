@@ -245,6 +245,52 @@ trait Api extends autoset.derivation.ReadersApi:
 
     if failed then None else Some(init)
 
+  /** Load configuration with `load`, and read it as an `A`.
+    *
+    * The parameters are the same as for `load`. Problems from both loading
+    * and reading are reported to `reporter`.
+    *
+    * @return
+    *   The config read as an `A`, and the merged configuration it was read
+    *   from, or `None` if any errors were reported. Readers mark parts of the
+    *   merged configuration, e.g. secrets, which are then not shown by its
+    *   `pretty` and `toString`, so it is safe to print for debugging.
+    */
+  def read[A](
+    paths: Iterable[os.FilePath] = Seq(),
+    pwd: os.Path = os.pwd,
+    parsers: Map[String, autoset.model.FormatParser] = defaultParsers,
+    env: Map[String, String] = sys.env,
+    envPrefix: String = null,
+    envKeyReplacer: String => List[String] = defaultEnvKeyReplacer,
+    envBinds: Iterable[(String, List[String])] = Map(),
+    props: collection.Map[String, String] = sys.props,
+    propsPrefix: String = null,
+    propsBinds: Iterable[(String, List[String])] = Map(),
+    init: model.Obj = model.Obj(
+      collection.mutable.LinkedHashMap.empty,
+      List(model.Origin.Default)
+    ),
+    reporter: model.Reporter = model.Reporter.printing()
+  )(using Reader[A]): Option[(A, model.Obj)] =
+    for
+      config <- load(
+        paths = paths,
+        pwd = pwd,
+        parsers = parsers,
+        env = env,
+        envPrefix = envPrefix,
+        envKeyReplacer = envKeyReplacer,
+        envBinds = envBinds,
+        props = props,
+        propsPrefix = propsPrefix,
+        propsBinds = propsBinds,
+        init = init,
+        reporter = reporter
+      )
+      value <- project[A](config, reporter)
+    yield (value, config)
+
   /** Record the absolute path of `file` in the origins from it in `value`,
     * which a parser created with `name` as the file's path.
     */
