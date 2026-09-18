@@ -14,9 +14,7 @@ object SourcePos:
   def hereImpl(using qctx: Quotes): Expr[SourcePos] =
     import qctx.reflect.*
     val pos = Position.ofMacroExpansion
-    val file = pos.sourceFile.getJPath match
-      case None       => "<virtual>"
-      case Some(path) => path.toString()
+    val file = pos.sourceFile.path.toString
     '{
       SourcePos(
         ${ Expr(file) },

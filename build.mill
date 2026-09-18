@@ -1,9 +1,9 @@
-//| mill-version: 1.0.6
+//| mill-version: 1.1.9
 
 import mill._, scalalib._, scalajslib._, scalanativelib._, scalafmt._, publish._
 
-val scala3 = "3.7.1"
-val scalaNative = "0.5.9"
+val scala3 = "3.9.0"
+val scalaNative = "0.5.12"
 
 object thirdparty:
   val oslib = mvn"com.lihaoyi::os-lib::0.11.6"
@@ -46,15 +46,48 @@ trait ConfigParseModule extends ScalaModule with ScalafmtModule with Publish:
       thirdparty.utest
     )
 
+object ini extends Module:
+  trait IniModule extends ConfigParseModule:
+    def artifactName = "configparse-ini"
+    def mvnDeps = Seq()
+
+    trait IniTests extends Tests:
+      def mvnDeps = super.mvnDeps() ++ Seq(thirdparty.oslib, thirdparty.ujson)
+
+  object jvm extends IniModule:
+    def sourcesFolders = Seq("src", "src-jvm")
+    object test extends IniTests
+
+  object native extends IniModule with ScalaNativeModule:
+    def sourcesFolders = Seq("src", "src-native")
+    def scalaNativeVersion = scalaNative
+    object test extends IniTests with ScalaNativeTests:
+      def nativeLinkStubs = true
+
+object autoset extends Module:
+  object jvm extends ConfigParseModule:
+    def sourcesFolders = Seq("src", "src-jvm")
+    def artifactName = "autoset"
+    object test extends Tests
+
+  object native extends ConfigParseModule with ScalaNativeModule:
+    def sourcesFolders = Seq("src", "src-native")
+    def artifactName = "autoset"
+    def scalaNativeVersion = scalaNative
+    object test extends Tests with ScalaNativeTests:
+      def nativeLinkStubs = true
+
 object configparse extends Module:
   object jvm extends ConfigParseModule:
     def sourcesFolders = Seq("src", "src-jvm")
     def artifactName = "configparse"
+    def moduleDeps = Seq(ini.jvm)
     object test extends Tests
 
   object native extends ConfigParseModule with ScalaNativeModule:
     def sourcesFolders = Seq("src", "src-native")
     def artifactName = "configparse"
+    def moduleDeps = Seq(ini.native)
     def scalaNativeVersion = scalaNative
     object test extends Tests with ScalaNativeTests:
       def nativeLinkStubs = true
