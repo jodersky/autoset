@@ -23,6 +23,8 @@ case class Client(url: String, retries: Int = 3) derives DerivedReadersTest.read
 case class UsesClient(client: Client)
 
 case class Optional(name: String, nick: Option[String], age: Option[Int] = Some(18))
+case class SecretPort(@secret port: Int)
+case class SecretList(@secret keys: List[Int])
 case class Pool(maxSize: Int, minIdle: Int = 0)
 case class Database(jdbcUrl: String, connectionPool: Pool)
 
@@ -85,8 +87,8 @@ object DerivedReadersTest extends TestSuite:
     given Reader[Pool] = readerFor[Pool]
     given Reader[Database] = readerFor[Database]
 
-  /** Read `value` at the root, returning the result, the value to show and any output. */
-  def read[A](value: Value)(using reader: Reader[A]): (Option[(A, Value)], String) =
+  /** Read `value` at the root, returning the result and any output. */
+  def read[A](value: Value)(using reader: Reader[A]): (Option[A], String) =
     val out = java.io.ByteArrayOutputStream()
     val reporter = Reporter.printing(java.io.PrintStream(out))
     val result = reader.read(value, Vector.empty, reporter)
@@ -99,12 +101,12 @@ object DerivedReadersTest extends TestSuite:
     test("fields") {
       val v = obj(file(1))("host" -> s("localhost"), "port" -> s("1234"), "password" -> s("pw"))
       val (result, out) = read[Db](v)
-      assert(result.get._1 == Db("localhost", 1234, "pw"))
+      assert(result.get == Db("localhost", 1234, "pw"))
       assert(out == "")
     }
     test("defaults") {
       val (result, out) = read[Db](obj(file(1))("host" -> s("localhost")))
-      assert(result.get._1 == Db("localhost", 5432, ""))
+      assert(result.get == Db("localhost", 5432, ""))
       assert(out == "")
     }
     test("missing field") {
@@ -125,7 +127,7 @@ object DerivedReadersTest extends TestSuite:
     test("unknown keys") {
       val v = obj(file(1))("host" -> s("h"), "hots" -> s("x", 2), "extra" -> obj(file(3))())
       val (result, out) = read[Db](v)
-      assert(result.get._1 == Db("h"))
+      assert(result.get == Db("h"))
       assert(
         out ==
           """warning: app.conf:2:1: unknown key 'hots'
@@ -154,41 +156,62 @@ object DerivedReadersTest extends TestSuite:
       )
 
       val good = obj(file(1))("name" -> s("app"), "db" -> obj(file(2))("host" -> s("h", 2)))
-      assert(read[App](good)._1.get._1 == App("app", Db("h"), Nil))
+      assert(read[App](good)._1.get == App("app", Db("h"), Nil))
     }
     test("missing nested field") {
       val (result, out) = read[App](obj(file(1))("name" -> s("app"), "db" -> obj(file(2))()))
       assert(result.isEmpty)
       assert(out == "error: app.conf:2:1: missing required field 'db.host'\n")
     }
-    test("shown value") {
+    test("marks") {
       val v = obj(file(1))("host" -> s("h"), "password" -> s("hunter2", 2), "extra" -> s("x"))
-      val (result, _) = read[Db](v)
-      // secrets are hidden, unknown keys are dropped
+      assert(read[Db](v)._1.get == Db("h", 5432, "hunter2"))
+      // secrets and unknown keys are marked, and not shown
+      assert(!v.fields("host").secret && !v.fields("host").unknown)
+      assert(v.fields("password").secret)
+      assert(v.fields("extra").unknown)
       assert(
-        result.get._2 == obj(file(1))(
-          "host" -> s("h"),
-          "password" -> Str("<secret>", LitKind.String, List(file(2)))
-        )
+        v.pretty() ==
+          """{ // app.conf
+            |  host: "h",
+            |  password: <secret>,
+            |  extra: <unknown>
+            |}""".stripMargin
       )
+      assert(v.toString == v.pretty())
+    }
+    test("secret errors") {
+      // secrets are marked before they are read, so errors don't show them
+      given Reader[SecretPort] = readers.readerFor[SecretPort]
+      given Reader[SecretList] = readers.readerFor[SecretList]
+      assert(
+        read[SecretPort](obj(file(1))("port" -> s("hunter2", 2)))._2 ==
+          "error: app.conf:2:1: expected an integer for 'port', found <secret>\n"
+      )
+      val list = obj(file(1))("keys" -> arr(file(2))(s("1", 2), s("hunter2", 3)))
+      assert(
+        read[SecretList](list)._2 ==
+          "error: app.conf:3:1: expected an integer for 'keys.1', found <secret>\n"
+      )
+      assert(list.pretty() == "{ // app.conf\n  keys: <secret>\n}")
     }
     test("generic") {
       given intBox: Reader[Box[Int]] = readers.readerFor[Box[Int]]
-      assert(read[Box[Int]](obj(file(1))("value" -> s("3")))._1.get._1 == Box(3, 1))
+      assert(read[Box[Int]](obj(file(1))("value" -> s("3")))._1.get == Box(3, 1))
       given listBox: Reader[Box[List[String]]] = readers.readerFor[Box[List[String]]]
       val v = obj(file(1))("value" -> arr(file(1))(s("a")), "count" -> s("2"))
-      assert(read[Box[List[String]]](v)._1.get._1 == Box(List("a"), 2))
+      assert(read[Box[List[String]]](v)._1.get == Box(List("a"), 2))
     }
     test("recursive") {
       val v = obj(file(1))(
         "name" -> s("root"),
         "children" -> arr(file(1))(obj(file(1))("name" -> s("leaf")))
       )
-      assert(read[Tree](v)._1.get._1 == Tree("root", List(Tree("leaf"))))
+      assert(read[Tree](v)._1.get == Tree("root", List(Tree("leaf"))))
     }
     test("empty") {
       given Reader[Empty] = readers.readerFor[Empty]
-      assert(read[Empty](obj(file(1))())._1.get._1 == Empty())
+      assert(read[Empty](obj(file(1))())._1.get == Empty())
     }
     test("readers are looked up on the instance") {
       // the imported givens are of type `readers.Reader`, so the field readers
@@ -198,7 +221,7 @@ object DerivedReadersTest extends TestSuite:
       val out = java.io.ByteArrayOutputStream()
       val reporter = Reporter.printing(java.io.PrintStream(out))
       val result = reader.read(obj(file(1))("host" -> s("h")), Vector.empty, reporter)
-      assert(result.get._1 == Db("h"))
+      assert(result.get == Db("h"))
     }
     test("derives") {
       def readDefault[A](value: Value)(using reader: autoset.Reader[A]) =
@@ -206,11 +229,7 @@ object DerivedReadersTest extends TestSuite:
         (reader.read(value, Vector.empty, Reporter.printing(java.io.PrintStream(out))), out.toString)
 
       val (result, out) = readDefault[Server](obj(file(1))("host" -> s("h"), "key" -> s("k", 2)))
-      assert(result.get._1 == Server("h", 8080, "k"))
-      assert(result.get._2 == obj(file(1))(
-        "host" -> s("h"),
-        "key" -> Str("<secret>", LitKind.String, List(file(2)))
-      ))
+      assert(result.get == Server("h", 8080, "k"))
       assert(out == "")
     }
     test("derives nested") {
@@ -226,16 +245,16 @@ object DerivedReadersTest extends TestSuite:
       ))
     }
     test("derives with an instance") {
-      assert(read[Client](obj(file(1))("url" -> s("u")))._1.get._1 == Client("u", 3))
+      assert(read[Client](obj(file(1))("url" -> s("u")))._1.get == Client("u", 3))
       // a derived reader is found for fields of other derived readers
       val v = obj(file(1))("client" -> obj(file(1))("url" -> s("u"), "retries" -> s("5")))
-      assert(read[UsesClient](v)._1.get._1 == UsesClient(Client("u", 5)))
+      assert(read[UsesClient](v)._1.get == UsesClient(Client("u", 5)))
     }
     test("optional fields") {
       // missing options are `None`, unless they have a default
-      assert(read[Optional](obj(file(1))("name" -> s("n")))._1.get._1 == Optional("n", None, Some(18)))
+      assert(read[Optional](obj(file(1))("name" -> s("n")))._1.get == Optional("n", None, Some(18)))
       val v = obj(file(1))("name" -> s("n"), "nick" -> s("x"), "age" -> nul(file(1)))
-      assert(read[Optional](v)._1.get._1 == Optional("n", Some("x"), None))
+      assert(read[Optional](v)._1.get == Optional("n", Some("x"), None))
       val (result, out) = read[Optional](obj(file(1))("nick" -> s("x"), "age" -> s("old", 2)))
       assert(result.isEmpty)
       assert(
@@ -263,10 +282,8 @@ object DerivedReadersTest extends TestSuite:
         "connection_pool" -> obj(file(2))("max_size" -> s("10", 2))
       )
       val (result, out) = readSnake[Database](v)
-      assert(result.get._1 == Database("jdbc:h2:mem", Pool(10, 0)))
+      assert(result.get == Database("jdbc:h2:mem", Pool(10, 0)))
       assert(out == "")
-      // the shown value uses the keys of the config
-      assert(result.get._2 == v)
 
       // the Scala names are not keys anymore, and errors use config keys
       val camel = obj(file(1))(
@@ -285,10 +302,10 @@ object DerivedReadersTest extends TestSuite:
       )
     }
     test("enum") {
-      assert(read[Level](s("Info"))._1.get._1 == Level.Info)
-      assert(read[Level](s(" Warn "))._1.get._1 == Level.Warn)
+      assert(read[Level](s("Info"))._1.get == Level.Info)
+      assert(read[Level](s(" Warn "))._1.get == Level.Warn)
       // the long form works too
-      assert(read[Level](obj(file(1))("type" -> s("Debug")))._1.get._1 == Level.Debug)
+      assert(read[Level](obj(file(1))("type" -> s("Debug")))._1.get == Level.Debug)
       assert(
         read[Level](s("info"))._2 ==
           "error: app.conf:1:1: expected one of 'Debug', 'Info', 'Warn', found 'info'\n"
@@ -301,15 +318,14 @@ object DerivedReadersTest extends TestSuite:
     test("sealed trait") {
       val disk = obj(file(1))("type" -> s("Disk"), "path" -> s("/d", 2))
       val (result, out) = read[Storage](disk)
-      assert(result.get._1 == Disk("/d"))
+      assert(result.get == Disk("/d"))
       assert(out == "")
-      // the discriminator is part of the shown value
-      assert(result.get._2 == disk)
+      assert(!disk.fields("type").unknown)
 
-      assert(read[Storage](obj(file(1))("type" -> s("S3"), "bucket" -> s("b")))._1.get._1 == S3("b"))
+      assert(read[Storage](obj(file(1))("type" -> s("S3"), "bucket" -> s("b")))._1.get == S3("b"))
       // case objects are written as their name, or as an object
-      assert(read[Storage](s("Memory"))._1.get._1 == Memory)
-      assert(read[Storage](obj(file(1))("type" -> s("Memory")))._1.get._1 == Memory)
+      assert(read[Storage](s("Memory"))._1.get == Memory)
+      assert(read[Storage](obj(file(1))("type" -> s("Memory")))._1.get == Memory)
     }
     test("sealed trait errors") {
       def errors(v: Value) = read[Storage](v)._2
@@ -341,26 +357,23 @@ object DerivedReadersTest extends TestSuite:
     }
     test("secret in a case") {
       val v = obj(file(1))("type" -> s("S3"), "bucket" -> s("b"), "key" -> s("k", 2))
-      assert(read[Storage](v)._1.get._2 == obj(file(1))(
-        "type" -> s("S3"),
-        "bucket" -> s("b"),
-        "key" -> Str("<secret>", LitKind.String, List(file(2)))
-      ))
+      assert(read[Storage](v)._1.get == S3("b", "k"))
+      assert(v.fields("key").secret, !v.fields("bucket").secret)
     }
     test("enum with parameters") {
-      assert(read[Shape](obj(file(1))("type" -> s("Circle"), "radius" -> s("2")))._1.get._1 == Shape.Circle(2))
-      assert(read[Shape](obj(file(1))("type" -> s("Rect"), "width" -> s("3")))._1.get._1 == Shape.Rect(3, 1))
-      assert(read[Shape](s("Point"))._1.get._1 == Shape.Point)
+      assert(read[Shape](obj(file(1))("type" -> s("Circle"), "radius" -> s("2")))._1.get == Shape.Circle(2))
+      assert(read[Shape](obj(file(1))("type" -> s("Rect"), "width" -> s("3")))._1.get == Shape.Rect(3, 1))
+      assert(read[Shape](s("Point"))._1.get == Shape.Point)
     }
     test("nested sealed traits") {
       // cases are flattened
-      assert(read[Animal](obj(file(1))("type" -> s("Dog"), "name" -> s("rex")))._1.get._1 == Dog("rex"))
-      assert(read[Animal](s("Cat"))._1.get._1 == Cat)
-      assert(read[Animal](obj(file(1))("type" -> s("Wolf"), "pack" -> s("3")))._1.get._1 == Wolf(3))
+      assert(read[Animal](obj(file(1))("type" -> s("Dog"), "name" -> s("rex")))._1.get == Dog("rex"))
+      assert(read[Animal](s("Cat"))._1.get == Cat)
+      assert(read[Animal](obj(file(1))("type" -> s("Wolf"), "pack" -> s("3")))._1.get == Wolf(3))
     }
     test("string literals") {
-      assert(read[Mode](s("fast"))._1.get._1 == "fast")
-      assert(read[Mode](s(" safe "))._1.get._1 == "safe")
+      assert(read[Mode](s("fast"))._1.get == "fast")
+      assert(read[Mode](s(" safe "))._1.get == "safe")
       assert(read[Mode](s("slow"))._2 == "error: app.conf:1:1: expected one of 'fast', 'safe', found 'slow'\n")
     }
     test("sums as fields") {
@@ -369,7 +382,7 @@ object DerivedReadersTest extends TestSuite:
         "level" -> s("Debug", 3),
         "mode" -> s("fast", 4)
       )
-      assert(read[Settings](v)._1.get._1 == Settings(Disk("/d"), Level.Debug, "fast"))
+      assert(read[Settings](v)._1.get == Settings(Disk("/d"), Level.Debug, "fast"))
       val bad = obj(file(1))("storage" -> obj(file(2))("type" -> s("Tape", 3)), "level" -> s("Trace", 4))
       assert(
         read[Settings](bad)._2 ==
@@ -386,7 +399,7 @@ object DerivedReadersTest extends TestSuite:
         given Reader[Level] = readerFor[Level]
       def readKebab[A](v: Value)(using r: kebabReaders.Reader[A]) =
         val out = java.io.ByteArrayOutputStream()
-        (r.read(v, Vector.empty, Reporter.printing(java.io.PrintStream(out))).map(_._1), out.toString)
+        (r.read(v, Vector.empty, Reporter.printing(java.io.PrintStream(out))), out.toString)
 
       assert(readKebab[Level](s("debug")) == (Some(Level.Debug), ""))
       assert(readKebab[Storage](obj(file(1))("kind" -> s("s3"), "bucket" -> s("b"))) == (Some(S3("b")), ""))
@@ -398,7 +411,7 @@ object DerivedReadersTest extends TestSuite:
     test("derives on an enum") {
       val out = java.io.ByteArrayOutputStream()
       val result = summon[autoset.Reader[Color]].read(s("Green"), Vector.empty, Reporter.printing(java.io.PrintStream(out)))
-      assert(result.get._1 == Color.Green)
+      assert(result.get == Color.Green)
     }
     test("compile errors") {
       import scala.compiletime.testing.typeCheckErrors

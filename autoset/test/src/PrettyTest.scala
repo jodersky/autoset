@@ -225,6 +225,52 @@ object PrettyTest extends TestSuite:
         )
       }
     }
+    test("redacted") {
+      val v = merged()
+      v.fields("db").asInstanceOf[Obj].fields("password").secret = true
+      v.fields("extra").unknown = true
+      v.fields("tags").asInstanceOf[Arr].values(0).secret = true
+      check(
+        v,
+        """|{ // app.conf
+           |  port: "9090", // env PORT (overrides app.conf:1:1)
+           |  db: {
+           |    host: "local",
+           |    password: <secret> // env DB_PASSWORD
+           |  },
+           |  tags: [<secret>, null],
+           |  empty: {},
+           |  extra: <unknown> // other.conf:1:1
+           |}"""
+      )
+      check(
+        v,
+        """|{ // other.conf:1:1, env , app.conf:1:1
+           |  port: "9090", // env PORT (overrides app.conf:1:1)
+           |  db: { // env DB_PASSWORD, app.conf:2:1
+           |    host: "local", // app.conf:3:1
+           |    password: <secret> // env DB_PASSWORD
+           |  },
+           |  tags: [ // app.conf:5:1
+           |    <secret>, // app.conf:5:1
+           |    null // app.conf:5:1
+           |  ],
+           |  empty: {}, // app.conf:6:1
+           |  extra: <unknown> // other.conf:1:1
+           |}""",
+        verbose = true
+      )
+      assert(v.toString == v.pretty())
+    }
+    test("secret object") {
+      // the whole object is hidden
+      val v = obj(file(1))("db" -> obj(file(2))("a" -> str("1", file(2))))
+      v.fields("db").markSecret()
+      check(v, """|{ // app.conf
+                  |  db: <secret>
+                  |}""")
+      assert(v.fields("db").asInstanceOf[Obj].fields("a").secret)
+    }
     test("empty") {
       check(obj(file(1))(), "{} // app.conf:1:1")
       check(arr(env("A"))(), "[] // env A")

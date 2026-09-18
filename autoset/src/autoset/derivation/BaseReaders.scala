@@ -9,36 +9,36 @@ import ReaderUtils.mismatch
 trait BaseReaders extends ReadersApi:
 
   given ValueReader: Reader[Value] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) = Some((value, value))
+    def read(value: Value, path: Vector[String], reporter: Reporter) = Some(value)
 
   given ObjReader: Reader[Obj] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case o: Obj => Some((o, value))
+        case o: Obj => Some(o)
         case _ => mismatch("an object", value, path, reporter)
 
   given ArrReader: Reader[Arr] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case a: Arr => Some((a, value))
+        case a: Arr => Some(a)
         case _ => mismatch("an array", value, path, reporter)
 
   given StrReader: Reader[Str] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case s: Str => Some((s, value))
+        case s: Str => Some(s)
         case _ => mismatch("a string", value, path, reporter)
 
   given NullReader: Reader[Null] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case n: Null => Some((n, value))
+        case n: Null => Some(n)
         case _ => mismatch("null", value, path, reporter)
 
   given StringReader: Reader[String] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case Str(raw, kind, origins) => Some((raw, value))
+        case Str(raw, _, _) => Some(raw)
         case _ => mismatch("a string", value, path, reporter)
 
   /** A reader for strings that parse as `A`. `parse` returns `Left` with a
@@ -50,7 +50,7 @@ trait BaseReaders extends ReadersApi:
       value match
         case Str(raw, _, _) =>
           parse(raw) match
-            case Right(a) => Some((a, value))
+            case Right(a) => Some(a)
             case Left(exp) => mismatch(exp, value, path, reporter)
         case _ => mismatch(expected, value, path, reporter)
 
@@ -256,12 +256,12 @@ trait BaseReaders extends ReadersApi:
     case _ => os.pwd
 
   /** Reads a path, resolving relative paths with `pathRoot`, and `~` as the
-    * home directory. The shown value is the resolved path.
+    * home directory.
     */
   given OsPathReader: Reader[os.Path] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case Str(raw, _, origins) =>
+        case Str(raw, _, _) =>
           val resolved =
             try
               if raw.isEmpty then None
@@ -270,10 +270,10 @@ trait BaseReaders extends ReadersApi:
               else Some(os.Path(raw, pathRoot(value.effectiveOrigin)))
             catch case scala.util.control.NonFatal(_) => None
           resolved match
-            case Some(p) => Some((p, Str(p.toString, LitKind.String, origins)))
+            case Some(p) => Some(p)
             case None => mismatch("a path", value, path, reporter)
         case _ => mismatch("a path", value, path, reporter)
 
   given NioPathReader: Reader[java.nio.file.Path] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
-      OsPathReader.read(value, path, reporter).map((p, shown) => (p.toNIO, shown))
+      OsPathReader.read(value, path, reporter).map(_.toNIO)

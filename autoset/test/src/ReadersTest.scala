@@ -16,10 +16,8 @@ object ReadersTest extends TestSuite:
     val out = java.io.ByteArrayOutputStream()
     val reporter = Reporter.printing(java.io.PrintStream(out))
     val result = reader.read(value, Vector("a", "b"), reporter)
-    // composite readers return a rebuilt copy, so compare structurally
-    result.foreach((_, shown) => assert(shown == value))
     assert(result.isEmpty == reporter.hasErrors)
-    (result.map(_._1), out.toString)
+    (result, out.toString)
 
   def ok[A: Reader](raw: String): A =
     val (result, out) = read[A](str(raw, file(1)))
@@ -236,35 +234,30 @@ object ReadersTest extends TestSuite:
       )
     }
     test("iterable from untyped string") {
-      def split[A](raw: String)(using reader: Reader[A]): (Option[(A, Value)], String) =
+      def split[A](raw: String, secret: Boolean = false)(using reader: Reader[A]): (Option[A], String) =
         val out = java.io.ByteArrayOutputStream()
         val value = Str(raw, LitKind.Unknown, List(env("APP_X")))
+        if secret then value.markSecret()
         val result = reader.read(value, Vector("a", "b"), Reporter.printing(java.io.PrintStream(out)))
         (result, out.toString)
 
-      assert(split[List[String]]("a, b ,c")._1.map(_._1) == Some(List("a", "b", "c")))
-      assert(split[List[String]]("a")._1.map(_._1) == Some(List("a")))
-      assert(split[List[String]]("a,,b")._1.map(_._1) == Some(List("a", "", "b")))
-      assert(split[List[String]]("a,")._1.map(_._1) == Some(List("a", "")))
-      assert(split[List[String]]("")._1.map(_._1) == Some(Nil))
-      assert(split[List[String]]("  ")._1.map(_._1) == Some(Nil))
-      assert(split[Set[Int]]("1,2,1")._1.map(_._1) == Some(Set(1, 2)))
-
-      // shown as an array, with every item pointing at the variable
-      val shown = split[List[Int]]("1,2")._1.get._2
-      assert(
-        shown == Arr(
-          collection.mutable.ListBuffer(
-            Str("1", LitKind.Unknown, List(env("APP_X"))),
-            Str("2", LitKind.Unknown, List(env("APP_X")))
-          ),
-          List(env("APP_X"))
-        )
-      )
+      assert(split[List[String]]("a, b ,c")._1 == Some(List("a", "b", "c")))
+      assert(split[List[String]]("a")._1 == Some(List("a")))
+      assert(split[List[String]]("a,,b")._1 == Some(List("a", "", "b")))
+      assert(split[List[String]]("a,")._1 == Some(List("a", "")))
+      assert(split[List[String]]("")._1 == Some(Nil))
+      assert(split[List[String]]("  ")._1 == Some(Nil))
+      assert(split[Set[Int]]("1,2,1")._1 == Some(Set(1, 2)))
 
       val (result, out) = split[List[Int]]("1, x")
       assert(result.isEmpty)
       assert(out == "error: env APP_X: expected an integer for 'a.b.1', found 'x'\n")
+
+      // items of a secret stay secret
+      assert(
+        split[List[Int]]("1, x", secret = true)._2 ==
+          "error: env APP_X: expected an integer for 'a.b.1', found <secret>\n"
+      )
     }
     test("iterable from typed string") {
       // typed formats have arrays, so a string there is a mistake
@@ -386,7 +379,7 @@ object ReadersTest extends TestSuite:
           Vector("a", "b"),
           Reporter.printing(java.io.PrintStream(out))
         )
-        (result.map(_._1), out.toString)
+        (result, out.toString)
 
       val conf = Origin.File("conf/app.yaml", 0, 1, 1)
       // relative to the config file
@@ -402,16 +395,10 @@ object ReadersTest extends TestSuite:
       // errors
       assert(readPath("", conf) == (None, "error: conf/app.yaml:1:1: expected a path for 'a.b', found ''\n"))
 
-      // the shown value is the resolved path
-      val shown = readers.OsPathReader
-        .read(Str("x", LitKind.Unknown, List(conf)), Vector.empty, Reporter())
-        .get._2
-      assert(shown == Str((os.pwd / "conf" / "x").toString, LitKind.String, List(conf)))
-
       // java paths are resolved in the same way
       val nio = readers.NioPathReader
         .read(Str("x", LitKind.String, List(conf)), Vector.empty, Reporter())
-      assert(nio.get._1 == (os.pwd / "conf" / "x").toNIO)
+      assert(nio.get == (os.pwd / "conf" / "x").toNIO)
     }
     test("overridden path root") {
       object etcReaders extends DefaultReaders:
@@ -421,12 +408,12 @@ object ReadersTest extends TestSuite:
         Vector.empty,
         Reporter()
       )
-      assert(result.get._1 == os.root / "etc" / "app" / "certs" / "key.pem")
+      assert(result.get == os.root / "etc" / "app" / "certs" / "key.pem")
     }
     test("project") {
       val out = java.io.ByteArrayOutputStream()
       val reporter = Reporter.printing(java.io.PrintStream(out))
-      assert(readers.project[Int](str("5", file(1)), reporter).map(_._1) == Some(5))
+      assert(readers.project[Int](str("5", file(1)), reporter) == Some(5))
       assert(readers.project[Int](str("x", file(1)), reporter).isEmpty)
       assert(reporter.errors == 1)
     }

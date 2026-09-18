@@ -14,6 +14,28 @@ sealed trait Value:
   /** Where this value was last defined. */
   def effectiveOrigin: Origin = origins.head
 
+  /** Whether this value is sensitive, and must not be shown. Set by readers,
+    * e.g. for fields annotated with `@secret`, on the value and everything in
+    * it.
+    */
+  var secret: Boolean = false
+
+  /** Whether this value is at a key which no reader expected, e.g. because of
+    * a typo. Its contents are not shown, in case it is a misplaced secret.
+    */
+  var unknown: Boolean = false
+
+  /** Mark this value and everything in it as secret. */
+  def markSecret(): Unit =
+    secret = true
+    this match
+      case o: Obj => o.fields.values.foreach(_.markSecret())
+      case a: Arr => a.values.foreach(_.markSecret())
+      case _ =>
+
+  /** Same as `pretty()`, so that secrets are never shown. */
+  override def toString: String = pretty()
+
   /** Render this value in a JSON-like format, for debugging. Keys are only
     * quoted when necessary, literals are always quoted, and origins are shown
     * as `//` comments.
@@ -24,6 +46,9 @@ sealed trait Value:
     * Values that were overridden, or that come from a named source such as an
     * environment variable, are always annotated. Pass `verbose = true` to
     * annotate every value with all of its origins.
+    *
+    * Secret values are shown as `<secret>`, and values at unknown keys as
+    * `<unknown>`.
     */
   def pretty(verbose: Boolean = false): String =
     val sb = StringBuilder()
@@ -63,6 +88,7 @@ object Value:
     /** @param ctx the source of the enclosing container, if any */
     def write(v: Value, indent: Int, sep: String, ctx: Option[String]): Unit =
       val items: Seq[(Option[String], Value)] = v match
+        case _ if redacted(v).isDefined => Nil
         case o: Obj => o.fields.toSeq.map((k, c) => (Some(k), c))
         case a: Arr => a.values.toSeq.map((None, _))
         case _ => Nil
@@ -94,6 +120,7 @@ object Value:
             sb ++= "  " * indent ++= close ++= sep
 
     private def leafText(v: Value): String = v match
+      case _ if redacted(v).isDefined => redacted(v).get
       case s: Str => quote(s.raw)
       case _: Null => "null"
       case _: Obj => "{}"
@@ -105,6 +132,12 @@ object Value:
         case os => Some(describe(os))
 
     private def comment(text: Option[String]): String = text.fold("")(" // " + _)
+
+  /** The placeholder to show instead of `v`, if it must not be shown. */
+  private def redacted(v: Value): Option[String] =
+    if v.secret then Some("<secret>")
+    else if v.unknown then Some("<unknown>")
+    else None
 
   private def key(k: String): String =
     if k.nonEmpty && k.forall(c => c.isLetterOrDigit || c == '_' || c == '-') then k

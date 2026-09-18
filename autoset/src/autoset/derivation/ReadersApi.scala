@@ -8,15 +8,14 @@ trait ReadersApi:
 
     /** Read a value and parse it as an `A`.
       *
-      * On success, return the result and the value to show for it
-      * (usually the input unchanged).
-      * On failure, report at least one error and return `None`.
+      * On failure, report at least one error and return `None`. Readers may
+      * mark parts of `value`, e.g. as secret.
       */
     def read(
       value: Value,
       path: Vector[String],
       reporter: Reporter
-    ): Option[(A, Value)]
+    ): Option[A]
 
   /** Companion of `Reader`, so that it can be used in `derives` clauses.
     * The `derived` method itself is added as an extension by
@@ -27,14 +26,17 @@ trait ReadersApi:
   /** Convert a config object into a scala type, emitting any error and/or
     * warnings.
     */
-  def project[A](obj: Value, reporter: Reporter)(using reader: Reader[A]): Option[(A, Value)] =
+  def project[A](obj: Value, reporter: Reporter)(using reader: Reader[A]): Option[A] =
     reader.read(obj, Vector.empty, reporter)
 
 /** Helpers for writing readers. */
 object ReaderUtils:
 
-  /** A short description of a value's type, for error messages. */
+  /** A short description of a value's type, for error messages. Secrets are
+    * not described.
+    */
   def describe(value: Value): String = value match
+    case _ if value.secret => "<secret>"
     case _: Obj => "an object"
     case _: Arr => "an array"
     case _: Null => "null"

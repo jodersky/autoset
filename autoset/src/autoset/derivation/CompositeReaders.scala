@@ -6,7 +6,6 @@ import ReaderUtils.mismatch
 /** Readers for collections, built from the readers of their elements. */
 trait CompositeReaders extends ReadersApi:
   import scala.collection.Factory
-  import scala.collection.mutable as m
   import scala.reflect.ClassTag
 
   /** Reads `null` as `None`, and anything else with the reader for `A`.
@@ -16,8 +15,8 @@ trait CompositeReaders extends ReadersApi:
   given OptionReader[A](using elem: Reader[A]): Reader[Option[A]] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case _: Null => Some((None, value))
-        case _ => elem.read(value, path, reporter).map((a, shown) => (Some(a), shown))
+        case _: Null => Some(None)
+        case _ => elem.read(value, path, reporter).map(Some(_))
 
   /** Reads an array into any iterable collection that has a `Factory`, e.g.
     * `List`, `Vector`, `Set` or `mutable.ArrayBuffer`.
@@ -37,30 +36,27 @@ trait CompositeReaders extends ReadersApi:
   ): Reader[C[A]] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
       value match
-        case arr: Arr => readAll(arr.values, arr.origins, path, reporter)
-        case Str(raw, LitKind.Unknown, origins) =>
+        case arr: Arr => readAll(arr.values, path, reporter)
+        case str @ Str(raw, LitKind.Unknown, origins) =>
           val items =
             if raw.trim.isEmpty then Nil
-            else raw.split(",", -1).toList.map(item => Str(item.trim, LitKind.Unknown, origins))
-          readAll(items, origins, path, reporter)
+            else
+              for item <- raw.split(",", -1).toList yield
+                val s = Str(item.trim, LitKind.Unknown, origins)
+                s.secret = str.secret
+                s
+          readAll(items, path, reporter)
         case _ => mismatch("an array", value, path, reporter)
 
     private def readAll(
         values: Iterable[Value],
-        origins: List[Origin],
         path: Vector[String],
         reporter: Reporter
-    ): Option[(C[A], Value)] =
+    ): Option[C[A]] =
       val results =
         values.zipWithIndex.map((v, i) => elem.read(v, path :+ i.toString, reporter))
       if results.exists(_.isEmpty) then None
-      else
-        val builder = factory.newBuilder
-        val shown = m.ListBuffer.empty[Value]
-        for case Some((a, v)) <- results do
-          builder += a
-          shown += v
-        Some((builder.result(), Arr(shown, origins)))
+      else Some(results.flatten.to(factory))
 
   /** Reads an object into any map with string keys that has a `Factory`, e.g.
     * `Map`, `SortedMap` or `mutable.Map`.
@@ -77,16 +73,10 @@ trait CompositeReaders extends ReadersApi:
         case obj: Obj =>
           val results = obj.fields.toSeq.map((k, v) => k -> elem.read(v, path :+ k, reporter))
           if results.exists(_._2.isEmpty) then None
-          else
-            val builder = factory.newBuilder
-            val shown = m.LinkedHashMap.empty[String, Value]
-            for case (k, Some((a, v))) <- results do
-              builder += k -> a
-              shown(k) = v
-            Some((builder.result(), Obj(shown, obj.origins)))
+          else Some(results.map((k, a) => k -> a.get).to(factory))
         case _ => mismatch("an object", value, path, reporter)
 
   /** Reads an array like any other collection (see `IterableReader`). */
   given ArrayReader[A](using ClassTag[A], Reader[A]): Reader[Array[A]] with
     def read(value: Value, path: Vector[String], reporter: Reporter) =
-      summon[Reader[Vector[A]]].read(value, path, reporter).map((v, shown) => (v.toArray, shown))
+      summon[Reader[Vector[A]]].read(value, path, reporter).map(_.toArray)
