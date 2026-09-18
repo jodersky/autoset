@@ -16,6 +16,7 @@ object LoadTest extends TestSuite:
       props: Map[String, String] = Map(),
       propsPrefix: String = null,
       propsBinds: Seq[(String, List[String])] = Seq(),
+      args: Seq[Arg] = Seq(),
       parsers: Map[String, FormatParser] = autoset.defaultParsers,
       reporter: Reporter = null
   ): (Option[Obj], String) =
@@ -33,6 +34,7 @@ object LoadTest extends TestSuite:
       props = props,
       propsPrefix = propsPrefix,
       propsBinds = propsBinds,
+      args = args,
       reporter = if reporter != null then reporter else Reporter.printing(java.io.PrintStream(out))
     )
     (result, out.toString)
@@ -266,6 +268,33 @@ object LoadTest extends TestSuite:
              |}"""
         )
       }
+    }
+    test("args") {
+      check(
+        load(
+          Seq("a.yaml" -> "port: 1\ndb:\n  host: h\n"),
+          Seq("a.yaml"),
+          env = Map("APP_PORT" -> "2"),
+          envPrefix = "APP_",
+          props = Map("app.port" -> "3"),
+          propsPrefix = "app.",
+          args = Seq(
+            Arg("--port", List("port"), "4"),
+            Arg("-p", List("port"), "5"),
+            Arg("--db", List("db"), "postgres://h"),
+            Arg("--set log.level=debug", List("log", "level"), "debug")
+          )
+        ),
+        """|{
+           |  port: "5", // arg -p (overrides arg --port, prop app.port, env APP_PORT, a.yaml:1:7)
+           |  db: "postgres://h", // arg --db (overrides a.yaml:3:3)
+           |  log: {
+           |    level: "debug" // arg --set log.level=debug
+           |  }
+           |}""",
+        """|warning: arg --db: 'db' is set to a value, replacing an object from a.yaml:3:3
+           |"""
+      )
     }
     test("type conflicts") {
       check(

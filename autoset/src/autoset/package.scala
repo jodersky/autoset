@@ -1,5 +1,6 @@
 package autoset
 
+export model.Arg
 export model.Arr
 export model.FormatParser
 export model.LitKind

@@ -13,7 +13,8 @@ object ReadTest extends TestSuite:
   def read[A: autoset.Reader](
       files: Seq[(String, String)],
       paths: Seq[String],
-      env: Map[String, String] = Map()
+      env: Map[String, String] = Map(),
+      args: Seq[Arg] = Seq()
   ): (Option[(A, Obj)], String, os.Path) =
     val dir = os.temp.dir()
     for (name, content) <- files do os.write(dir / os.RelPath(name), content, createFolders = true)
@@ -24,6 +25,7 @@ object ReadTest extends TestSuite:
       env = env,
       envPrefix = "APP_",
       props = Map(),
+      args = args,
       reporter = reporter
     )
     assert(result.isEmpty == reporter.hasErrors)
@@ -72,6 +74,15 @@ object ReadTest extends TestSuite:
       )
       assert(result.isEmpty)
       assert(out == "error: app.json:1:58: expected an integer for 'db.port', found 'x'\n")
+    }
+    test("args") {
+      val files = Seq("app.json" -> """{"name": "app", "data": "d", "db": {"host": "h", "password": "p"}}""")
+      val (result, _, _) = read[ReadApp](files, Seq("app.json"), args = Seq(Arg("--db-port", List("db", "port"), "80")))
+      assert(result.get._1.db.port == 80)
+      // errors point at the argument
+      val (failed, out, _) = read[ReadApp](files, Seq("app.json"), args = Seq(Arg("--db-port", List("db", "port"), "http")))
+      assert(failed.isEmpty)
+      assert(out == "error: arg --db-port: expected an integer for 'db.port', found 'http'\n")
     }
     test("secret errors") {
       case class Port(@secret port: Int) derives autoset.Reader

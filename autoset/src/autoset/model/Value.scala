@@ -188,7 +188,7 @@ enum Origin:
   case File(path: String, idx: Int, line: Int, col: Int, absolute: Option[String] = None)
   case Env(name: String)
   case Props(name: String)
-  case Arg()
+  case Arg(name: String)
   case Code(path: String, idx: Int, line: Int, col: Int) // set un user code
   case Default // from the case class parameter
 
@@ -196,7 +196,7 @@ enum Origin:
     case File(path, _, line, col, _) => Origin.location(path, line, col)
     case Env(name) => s"env $name"
     case Props(name) => s"prop $name"
-    case Arg() => "arg"
+    case Arg(name) => s"arg $name"
     case Code(path, _, line, col) => "code " + Origin.location(path, line, col)
     case Default => "default"
 

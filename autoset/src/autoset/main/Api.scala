@@ -151,6 +151,12 @@ trait Api extends autoset.derivation.ReadersApi:
     *   contain `"some.property" -> List("foo", "bar")`, then this will result in the
     *   configuration `foo.bar=1`
     *
+    * @param args
+    *   Config values given on the command line, applied last, so that they
+    *   take precedence over all other sources (and later ones over earlier
+    *   ones). Only pass arguments which were actually given: defaults of a
+    *   command line parser would override other config.
+    *
     * @param init
     *   Root configuration object into which all other configuration will be
     *   merged. This can be set to build configurations through multiple calls
@@ -178,7 +184,7 @@ trait Api extends autoset.derivation.ReadersApi:
     props: collection.Map[String, String] = sys.props,
     propsPrefix: String = null,
     propsBinds: Iterable[(String, List[String])] = Map(),
-    // args: Iterable[(List[String], String)] = Map(),
+    args: Iterable[model.Arg] = Nil,
     init: model.Obj = model.Obj(
       collection.mutable.LinkedHashMap.empty,
       List(model.Origin.Default) // TODO: use special "root" origin?
@@ -239,9 +245,8 @@ trait Api extends autoset.derivation.ReadersApi:
         fromProps(key, key.drop(propsPrefix.length).split("\\.", -1).toList)
     for (key, path) <- propsBinds if props.contains(key) do fromProps(key, path)
 
-    // args
-    // for (argKey, argValue) <- args do
-    //   setConfig(init, argKey, Str(propsValue, LitKind.Unknown, List(Origin.Props(propsKey))), reporter)
+    for arg <- args do
+      setConfig(init, arg.path, Str(arg.value, LitKind.Unknown, List(Origin.Arg(arg.name))), reporter)
 
     if failed then None else Some(init)
 
@@ -267,6 +272,7 @@ trait Api extends autoset.derivation.ReadersApi:
     props: collection.Map[String, String] = sys.props,
     propsPrefix: String = null,
     propsBinds: Iterable[(String, List[String])] = Map(),
+    args: Iterable[model.Arg] = Nil,
     init: model.Obj = model.Obj(
       collection.mutable.LinkedHashMap.empty,
       List(model.Origin.Default)
@@ -285,6 +291,7 @@ trait Api extends autoset.derivation.ReadersApi:
         props = props,
         propsPrefix = propsPrefix,
         propsBinds = propsBinds,
+        args = args,
         init = init,
         reporter = reporter
       )
