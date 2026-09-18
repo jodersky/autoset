@@ -1,0 +1,7 @@
+{
+  "db": {"host": "localhost", "port": 5432},
+  "cache": "none",
+  "placeholder": null,
+  "hosts": ["a", "b"],
+  "empty": {}
+}

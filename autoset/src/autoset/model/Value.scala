@@ -71,6 +71,8 @@ object Value:
         val inner = if verbose then None else dominant(items.map(_._2)).orElse(ctx)
         // a merged object's origins are contributors, not overrides
         val header = v match
+          // arrays aren't merged, so any further origins are overrides
+          case _: Arr if !verbose && v.origins.tail.nonEmpty => Some(describe(v.origins))
           case _ if !verbose => inner.filter(!ctx.contains(_))
           case _: Obj => Some(v.origins.map(_.pretty).mkString(", "))
           case _ => Some(describe(v.origins))
@@ -124,27 +126,7 @@ object Value:
 case class Obj(
     fields: m.LinkedHashMap[String, Value],
     var origins: List[Origin]
-) extends Value:
-
-  /** Merge the fields from the given object into this one.
-    *
-    * Note that only objects are merged. Any other values will overwrite
-    * existing ones, and the overwritten values' origins are appended to the
-    * new value's `origins`.
-    *
-    * This consumes `other`: its subtrees are moved into this object, so it
-    * must not be used or modified afterwards.
-    */
-  def mergeFrom(other: Obj): Unit =
-    for (k, theirs) <- other.fields do
-      (fields.get(k), theirs) match
-        case (None, _) => fields(k) = theirs
-        case (Some(mine: Obj), theirs: Obj) =>
-          mine.mergeFrom(theirs)
-        case (Some(mine), _) =>
-          theirs.origins = theirs.origins ::: mine.origins
-          fields(k) = theirs
-    origins = other.origins ::: origins
+) extends Value
 
 case class Arr(
     values: m.ListBuffer[Value],
@@ -164,8 +146,10 @@ enum LitKind:
   case Unknown
 
 enum Origin:
-  // `idx` is the character offset, used to look up text in the source.
-  // `line` and `col` are 1-based and only used for display.
+  // `idx` is the byte offset in the source (UTF-8), used to look up text.
+  // `line` and `col` are 1-based and only used for display; `col` counts
+  // characters, not bytes.
+  // Any of them is -1 when unknown, since not all formats report positions.
   case File(path: String, idx: Int, line: Int, col: Int)
   case Env(name: String)
   case Props(name: String)
@@ -174,9 +158,16 @@ enum Origin:
   case Default // from the case class parameter
 
   def pretty: String = this match
-    case File(path, _, line, col) => s"$path:$line:$col"
+    case File(path, _, line, col) => Origin.location(path, line, col)
     case Env(name) => s"env $name"
     case Props(name) => s"prop $name"
     case Arg() => "arg"
-    case Code(path, _, line, col) => s"code $path:$line:$col"
+    case Code(path, _, line, col) => "code " + Origin.location(path, line, col)
     case Default => "default"
+
+object Origin:
+  /** `path:line:col`, leaving out unknown parts. */
+  private def location(path: String, line: Int, col: Int): String =
+    if line <= 0 then path
+    else if col <= 0 then s"$path:$line"
+    else s"$path:$line:$col"

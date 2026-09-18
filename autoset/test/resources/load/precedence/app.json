@@ -1,0 +1,4 @@
+{
+  "features": ["c"],
+  "logging": {"level": "debug"}
+}

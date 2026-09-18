@@ -15,25 +15,37 @@ case class ParseException(
 class MutablePos extends Pos:
   var row = 1
   var col = 1
+  var idx = 0
 
   def copy() =
     val m = MutablePos()
     m.row = row
     m.col = col
+    m.idx = idx
     m
 
   override def toString: String = s"$row:$col"
 
-/** A basic INI parser, built-in to configparse. */
+/** A basic INI parser, built-in to configparse. The input is decoded as UTF-8. */
 class Parser(input: java.io.InputStream, visitor: Visitor):
 
+  private val reader =
+    java.io.InputStreamReader(input, java.nio.charset.StandardCharsets.UTF_8)
   private val cpos = MutablePos()
   private var char: Int = -1
+
+  /** Number of bytes `c` takes in UTF-8. A surrogate is half of a 4-byte pair. */
+  private def utf8Length(c: Int): Int =
+    if c < 0x80 then 1
+    else if c < 0x800 then 2
+    else if Character.isSurrogate(c.toChar) then 2
+    else 3
 
   // up to the current character (not included)
   private val lineBuffer = new StringBuilder()
 
   inline private def readChar(): Unit =
+    if char != -1 then cpos.idx += utf8Length(char)
     char match
       case '\n' =>
         cpos.col = 1
@@ -43,7 +55,7 @@ class Parser(input: java.io.InputStream, visitor: Visitor):
       case _         =>
         cpos.col += 1
         lineBuffer += char.toChar
-    char = input.read()
+    char = reader.read()
 
   readChar()
 

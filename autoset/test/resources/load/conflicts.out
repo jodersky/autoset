@@ -1,0 +1,14 @@
+warning: 2.yaml:1:5: 'db' is set to a value, replacing an object from 1.json:2:9
+warning: 2.yaml:3:3: 'cache' is set to an object, replacing a value from 1.json:3:12
+---
+{ // 2.yaml
+  db: "postgres://localhost/db", // 2.yaml:1:5 (overrides 1.json:2:9)
+  cache: {
+    size: "10"
+  },
+  placeholder: {
+    set: "true"
+  },
+  hosts: "a,b", // 2.yaml:6:8 (overrides 1.json:5:12)
+  empty: null // 2.yaml:7:8 (overrides 1.json:6:12)
+}

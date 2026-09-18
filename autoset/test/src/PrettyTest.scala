@@ -18,13 +18,13 @@ object PrettyTest extends TestSuite:
       "tags" -> arr(file(5))(str("a", file(5)), nul(file(5))),
       "empty" -> obj(file(6))()
     )
-    base.mergeFrom(
+    merge(base, 
       obj(env(""))(
         "port" -> str("9090", env("PORT")),
         "db" -> obj(env("DB_PASSWORD"))("password" -> str("hunter2", env("DB_PASSWORD")))
       )
     )
-    base.mergeFrom(
+    merge(base, 
       obj(file(1, "other.conf"))(
         "extra" -> obj(file(1, "other.conf"))(
           "x" -> str("1", file(1, "other.conf")),
@@ -195,6 +195,20 @@ object PrettyTest extends TestSuite:
              |    "1",
              |    "2" // env X
              |  ]
+             |}"""
+        )
+      }
+      test("overridden") {
+        check(
+          obj(file(1))(
+            "x" -> str("x", file(1)),
+            "a" -> arr(file(4, "b.conf"), file(2))(str("1", file(4, "b.conf"))),
+            "y" -> str("y", file(3))
+          ),
+          """|{ // app.conf
+             |  x: "x",
+             |  a: ["1"], // b.conf:4:1 (overrides app.conf:2:1)
+             |  y: "y"
              |}"""
         )
       }

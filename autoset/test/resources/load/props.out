@@ -1,0 +1,14 @@
+warning: prop app.: ignoring invalid configuration key ''
+warning: prop app.a..b: ignoring invalid configuration key 'a..b'
+warning: prop app.name.first: 'name' is set to an object, replacing a value from base.properties
+---
+{
+  db: {
+    host: "db.example.com", // prop app.db.host (overrides base.properties)
+    port: "6543", // prop port (overrides prop app.db.port, base.properties)
+    user: "admin" // prop app.db.user
+  },
+  name: {
+    first: "value replaced by an object" // prop app.name.first
+  }
+}

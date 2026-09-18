@@ -9,7 +9,8 @@ object thirdparty:
   val oslib = mvn"com.lihaoyi::os-lib::0.11.6"
   val utest = mvn"com.lihaoyi::utest::0.9.1"
   val ujson = mvn"com.lihaoyi::ujson::4.4.0"
-  val yamlesque = mvn"io.crashbox::yamlesque::0.4.3"
+  val yamlesque4 = mvn"io.crashbox::yamlesque::0.4.3" // legacy, remove once configparse is removed
+  val yamlesque = mvn"io.crashbox::yamlesque::0.5.1"
   val sconfig = mvn"org.ekrich::sconfig::1.12.0"
   // val sjavatime = mvn"org.ekrich::sjavatime::1.4.0"
   val readers = mvn"io.crashbox::clip-readers::0.1.0"
@@ -68,11 +69,13 @@ object autoset extends Module:
   object jvm extends ConfigParseModule:
     def sourcesFolders = Seq("src", "src-jvm")
     def artifactName = "autoset"
+    def moduleDeps = Seq(ini.jvm)
     object test extends Tests
 
   object native extends ConfigParseModule with ScalaNativeModule:
     def sourcesFolders = Seq("src", "src-native")
     def artifactName = "autoset"
+    def moduleDeps = Seq(ini.native)
     def scalaNativeVersion = scalaNative
     object test extends Tests with ScalaNativeTests:
       def nativeLinkStubs = true
@@ -84,6 +87,16 @@ object configparse extends Module:
     def moduleDeps = Seq(ini.jvm)
     object test extends Tests
 
+    // this module will eventually be removed so it's not worth updating it to
+    // be compatible with the updated yamlesque
+    override def mvnDeps = Seq(
+      thirdparty.oslib,
+      thirdparty.ujson,
+      thirdparty.yamlesque4,
+      thirdparty.sconfig,
+      thirdparty.readers
+    )
+
   object native extends ConfigParseModule with ScalaNativeModule:
     def sourcesFolders = Seq("src", "src-native")
     def artifactName = "configparse"
@@ -91,6 +104,16 @@ object configparse extends Module:
     def scalaNativeVersion = scalaNative
     object test extends Tests with ScalaNativeTests:
       def nativeLinkStubs = true
+
+    // this module will eventually be removed so it's not worth updating it to
+    // be compatible with the updated yamlesque
+    override def mvnDeps = Seq(
+      thirdparty.oslib,
+      thirdparty.ujson,
+      thirdparty.yamlesque4,
+      thirdparty.sconfig,
+      thirdparty.readers
+    )
 
 object example extends ScalaModule:
   def scalaVersion = scala3

@@ -1,0 +1,13 @@
+error: 2-bad.json:3:7: expected : got "2"
+  "b" 2
+      ^
+error: 3-bad.yaml:3:2: Entries within the same map must start at the same column.
+ c: 2
+ ^
+error: 4-bad.conf:2: expecting a close parentheses ')' here, not: end of file
+error: no parser defined for extension of file 5-unknown.toml
+warning: 6-warning.ini:2:1: duplicate key 'a', the last one takes precedence
+a = 2
+^
+---
+(failed)

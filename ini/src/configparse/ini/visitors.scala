@@ -4,6 +4,9 @@ trait Pos:
   def row: Int
   def col: Int
 
+  /** 0-based byte offset in the input. */
+  def idx: Int
+
 trait Visitor:
   def visitKey(pos: Pos, key: String): Unit
   def visitString(pos: Pos, text: String): Unit

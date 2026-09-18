@@ -1,0 +1,10 @@
+warning: skipping dir/sub in config directory dir, which is not a regular file
+---
+{ // dir/a.json
+  a: "a.json",
+  shared: "c", // dir/c:2:10 (overrides dir/b.ini:1:10, dir/a.json:1:27)
+  section: { // dir/b.ini
+    x: "1",
+    y: "2" // last.yaml:2:6
+  }
+}

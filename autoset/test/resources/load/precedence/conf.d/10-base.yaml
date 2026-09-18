@@ -1,0 +1,9 @@
+server:
+  host: localhost
+  port: 8080
+db:
+  url: jdbc:h2:mem
+  pool:
+    min: 1
+    max: 10
+features: [a, b]

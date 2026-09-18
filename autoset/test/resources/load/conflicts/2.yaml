@@ -1,0 +1,7 @@
+db: postgres://localhost/db
+cache:
+  size: 10
+placeholder:
+  set: true
+hosts: a,b
+empty: ~

@@ -13,3 +13,7 @@ object Helpers:
   def arr(origins: Origin*)(values: Value*) = Arr(m.ListBuffer(values*), origins.toList)
   def obj(origins: Origin*)(fields: (String, Value)*) =
     Obj(m.LinkedHashMap(fields*), origins.toList)
+
+  /** Merge `from` into `into`, discarding any warnings. */
+  def merge(into: Obj, from: Obj): Unit =
+    autoset.merge(into, from, Reporter(java.io.PrintStream(java.io.ByteArrayOutputStream())))

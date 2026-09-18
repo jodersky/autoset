@@ -1,0 +1,19 @@
+---
+{ // conf.d/20-override.conf
+  server: {
+    host: "0.0.0.0", // env APP_SERVER_HOST (overrides conf.d/10-base.yaml:2:9)
+    port: "1234" // prop custom.port (overrides conf.d/20-override.conf:1, conf.d/10-base.yaml:3:9)
+  },
+  db: {
+    url: "postgres://db", // env DATABASE_URL (overrides conf.d/10-base.yaml:5:8)
+    pool: {
+      min: "5", // env APP_DB_POOL_MIN (overrides conf.d/10-base.yaml:7:10)
+      max: "20", // conf.d/20-override.conf:3 (overrides conf.d/10-base.yaml:8:10)
+      timeout: "30s" // conf.d/30-extra.properties
+    }
+  },
+  features: ["c"], // app.json:2:15 (overrides conf.d/10-base.yaml:9:11)
+  logging: {
+    level: "warn" // prop app.logging.level (overrides app.json:3:24, conf.d/30-extra.properties)
+  }
+}

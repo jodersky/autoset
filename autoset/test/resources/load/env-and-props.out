@@ -1,0 +1,9 @@
+---
+{ // base.yaml
+  db: {
+    host: "props", // prop app.db.host (overrides env APP_DB_HOST, base.yaml:2:9)
+    port: "5432"
+  },
+  name: "env", // env APP_NAME (overrides base.yaml:4:7)
+  tags: ["a", "b"]
+}

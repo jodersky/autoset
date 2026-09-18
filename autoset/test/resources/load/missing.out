@@ -1,0 +1,4 @@
+error: path absent.json does not exist
+error: path absent-dir does not exist
+---
+(failed)
