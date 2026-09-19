@@ -1,6 +1,7 @@
 //| mill-version: 1.1.9
 
 import mill._, scalalib._, scalajslib._, scalanativelib._, scalafmt._, publish._
+import mill.api.Task.Simple
 
 val scala3 = "3.9.0"
 val scalaNative = "0.5.12"
@@ -130,3 +131,15 @@ object configparse extends Module:
 object example extends ScalaModule:
   def scalaVersion = scala3
   def moduleDeps = Seq(configparse.jvm)
+
+
+trait ExampleModule extends ScalaModule:
+  def scalaVersion = scala3
+
+  def moduleDeps = Seq(autoset.jvm)
+
+  // run examples from their own directory, so that they find their config files
+  def forkWorkingDir = Task { moduleDir }
+
+object examples extends Module:
+  object demo extends ExampleModule

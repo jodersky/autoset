@@ -1,0 +1,8 @@
+address: q
+port: 2
+db:
+  type: postgres
+  # file: a
+  uri: http://f
+  password: foo
+
