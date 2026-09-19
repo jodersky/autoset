@@ -16,12 +16,13 @@ trait DerivedReaders extends ReadersApi:
   def fieldName(name: String): String = name
 
   /** The name in config files of a case of a sealed type or enum called
-    * `name`. By default, names are the same as in Scala.
+    * `name`. By default, names are in lowerCamelCase, like field names, e.g.
+    * `Postgres` is `postgres` and `InMemory` is `inMemory`.
     *
     * Override this to use a different naming convention, for example
-    * `ReaderUtils.kebabify(name)`.
+    * `ReaderUtils.kebabify(name)`, or `name` to use the Scala names.
     */
-  def caseName(name: String): String = name
+  def caseName(name: String): String = ReaderUtils.lowerCamelCase(name)
 
   /** The key in config objects which says which case of a sealed type or enum
     * an object is.
@@ -57,12 +58,12 @@ trait DerivedReaders extends ReadersApi:
     * given Reader[Db] = readerFor[Db]
     *
     * enum Level:
-    *   case Debug, Info, Warn // `level: Info`
+    *   case Debug, Info, Warn // `level: info`
     * given Reader[Level] = readerFor[Level]
     *
     * sealed trait Storage
-    * case class Disk(path: os.Path) extends Storage // `storage: {type: Disk, path: /data}`
-    * case object Memory extends Storage // `storage: Memory`
+    * case class Disk(path: os.Path) extends Storage // `storage: {type: disk, path: /data}`
+    * case object Memory extends Storage // `storage: memory`
     * given Reader[Storage] = readerFor[Storage]
     * ```
     */

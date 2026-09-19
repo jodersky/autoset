@@ -83,6 +83,18 @@ object ReaderUtils:
       )
     found.headOption
 
+  /** `ThisIsLowerCamelCase => thisIsLowerCamelCase`. A leading acronym is
+    * lower-cased entirely: `HTTPServer => httpServer`, `URL => url`.
+    */
+  def lowerCamelCase(name: String): String =
+    // the number of leading upper case letters
+    val upper = name.takeWhile(_.isUpper).length
+    // an upper case letter followed by a lower case one starts the next word
+    val n =
+      if upper > 1 && upper < name.length && name(upper).isLower then upper - 1
+      else upper
+    name.take(n).toLowerCase + name.drop(n)
+
   /** `thisIsKebabCase => this-is-kebab-case` */
   def kebabify(camelCase: String): String = separate(camelCase, '-')
 

@@ -322,30 +322,30 @@ object DerivedReadersTest extends TestSuite:
       )
     }
     test("enum") {
-      assert(read[Level](s("Info"))._1.get == Level.Info)
-      assert(read[Level](s(" Warn "))._1.get == Level.Warn)
+      assert(read[Level](s("info"))._1.get == Level.Info)
+      assert(read[Level](s(" warn "))._1.get == Level.Warn)
       // the long form works too
-      assert(read[Level](obj(file(1))("type" -> s("Debug")))._1.get == Level.Debug)
+      assert(read[Level](obj(file(1))("type" -> s("debug")))._1.get == Level.Debug)
       assert(
-        read[Level](s("info"))._2 ==
-          "error: app.conf:1:1: expected one of 'Debug', 'Info', 'Warn', found 'info'\n"
+        read[Level](s("Info"))._2 ==
+          "error: app.conf:1:1: expected one of 'debug', 'info', 'warn', found 'Info'\n"
       )
       assert(
         read[Level](arr(file(1))())._2 ==
-          "error: app.conf:1:1: expected one of 'Debug', 'Info', 'Warn', found an array\n"
+          "error: app.conf:1:1: expected one of 'debug', 'info', 'warn', found an array\n"
       )
     }
     test("sealed trait") {
-      val disk = obj(file(1))("type" -> s("Disk"), "path" -> s("/d", 2))
+      val disk = obj(file(1))("type" -> s("disk"), "path" -> s("/d", 2))
       val (result, out) = read[Storage](disk)
       assert(result.get == Disk("/d"))
       assert(out == "")
       assert(!disk.fields("type").unknown)
 
-      assert(read[Storage](obj(file(1))("type" -> s("S3"), "bucket" -> s("b")))._1.get == S3("b"))
+      assert(read[Storage](obj(file(1))("type" -> s("s3"), "bucket" -> s("b")))._1.get == S3("b"))
       // case objects are written as their name, or as an object
-      assert(read[Storage](s("Memory"))._1.get == Memory)
-      assert(read[Storage](obj(file(1))("type" -> s("Memory")))._1.get == Memory)
+      assert(read[Storage](s("memory"))._1.get == Memory)
+      assert(read[Storage](obj(file(1))("type" -> s("memory")))._1.get == Memory)
     }
     test("sealed trait errors") {
       def errors(v: Value) = read[Storage](v)._2
@@ -353,43 +353,43 @@ object DerivedReadersTest extends TestSuite:
       assert(errors(obj(file(1))("path" -> s("/d"))) == "error: app.conf:1:1: missing required field 'type'\n")
       assert(
         errors(obj(file(1))("type" -> s("Tape", 2))) ==
-          "error: app.conf:2:1: expected one of 'Disk', 'S3', 'Memory' for 'type', found 'Tape'\n"
+          "error: app.conf:2:1: expected one of 'disk', 's3', 'memory' for 'type', found 'Tape'\n"
       )
       assert(
         errors(obj(file(1))("type" -> obj(file(2))())) ==
-          "error: app.conf:2:1: expected one of 'Disk', 'S3', 'Memory' for 'type', found an object\n"
+          "error: app.conf:2:1: expected one of 'disk', 's3', 'memory' for 'type', found an object\n"
       )
       // the string form can't give required fields
-      assert(errors(s("Disk")) == "error: app.conf:1:1: missing required field 'path'\n")
-      assert(errors(s("Tape")) == "error: app.conf:1:1: expected one of 'Disk', 'S3', 'Memory', found 'Tape'\n")
+      assert(errors(s("disk")) == "error: app.conf:1:1: missing required field 'path'\n")
+      assert(errors(s("Tape")) == "error: app.conf:1:1: expected one of 'disk', 's3', 'memory', found 'Tape'\n")
       assert(errors(arr(file(1))()) == "error: app.conf:1:1: expected an object, found an array\n")
       // errors and warnings of the case itself
       assert(
-        errors(obj(file(1))("type" -> s("Disk"), "path" -> s("/d"), "sync" -> s("maybe", 2), "x" -> s("", 3))) ==
+        errors(obj(file(1))("type" -> s("disk"), "path" -> s("/d"), "sync" -> s("maybe", 2), "x" -> s("", 3))) ==
           """error: app.conf:2:1: expected a boolean ('true' or 'false') for 'sync', found 'maybe'
             |warning: app.conf:3:1: unknown key 'x'
             |""".stripMargin
       )
       assert(
-        errors(obj(file(1))("type" -> s("Memory"), "size" -> s("1", 2))) ==
+        errors(obj(file(1))("type" -> s("memory"), "size" -> s("1", 2))) ==
           "warning: app.conf:2:1: unknown key 'size'\n"
       )
     }
     test("secret in a case") {
-      val v = obj(file(1))("type" -> s("S3"), "bucket" -> s("b"), "key" -> s("k", 2))
+      val v = obj(file(1))("type" -> s("s3"), "bucket" -> s("b"), "key" -> s("k", 2))
       assert(read[Storage](v)._1.get == S3("b", "k"))
       assert(v.fields("key").secret, !v.fields("bucket").secret)
     }
     test("enum with parameters") {
-      assert(read[Shape](obj(file(1))("type" -> s("Circle"), "radius" -> s("2")))._1.get == Shape.Circle(2))
-      assert(read[Shape](obj(file(1))("type" -> s("Rect"), "width" -> s("3")))._1.get == Shape.Rect(3, 1))
-      assert(read[Shape](s("Point"))._1.get == Shape.Point)
+      assert(read[Shape](obj(file(1))("type" -> s("circle"), "radius" -> s("2")))._1.get == Shape.Circle(2))
+      assert(read[Shape](obj(file(1))("type" -> s("rect"), "width" -> s("3")))._1.get == Shape.Rect(3, 1))
+      assert(read[Shape](s("point"))._1.get == Shape.Point)
     }
     test("nested sealed traits") {
       // cases are flattened
-      assert(read[Animal](obj(file(1))("type" -> s("Dog"), "name" -> s("rex")))._1.get == Dog("rex"))
-      assert(read[Animal](s("Cat"))._1.get == Cat)
-      assert(read[Animal](obj(file(1))("type" -> s("Wolf"), "pack" -> s("3")))._1.get == Wolf(3))
+      assert(read[Animal](obj(file(1))("type" -> s("dog"), "name" -> s("rex")))._1.get == Dog("rex"))
+      assert(read[Animal](s("cat"))._1.get == Cat)
+      assert(read[Animal](obj(file(1))("type" -> s("wolf"), "pack" -> s("3")))._1.get == Wolf(3))
     }
     test("string literals") {
       assert(read[Mode](s("fast"))._1.get == "fast")
@@ -409,18 +409,34 @@ object DerivedReadersTest extends TestSuite:
     }
     test("sums as fields") {
       val v = obj(file(1))(
-        "storage" -> obj(file(2))("type" -> s("Disk", 2), "path" -> s("/d", 2)),
-        "level" -> s("Debug", 3),
+        "storage" -> obj(file(2))("type" -> s("disk", 2), "path" -> s("/d", 2)),
+        "level" -> s("debug", 3),
         "mode" -> s("fast", 4)
       )
       assert(read[Settings](v)._1.get == Settings(Disk("/d"), Level.Debug, "fast"))
       val bad = obj(file(1))("storage" -> obj(file(2))("type" -> s("Tape", 3)), "level" -> s("Trace", 4))
       assert(
         read[Settings](bad)._2 ==
-          """error: app.conf:3:1: expected one of 'Disk', 'S3', 'Memory' for 'storage.type', found 'Tape'
-            |error: app.conf:4:1: expected one of 'Debug', 'Info', 'Warn' for 'level', found 'Trace'
+          """error: app.conf:3:1: expected one of 'disk', 's3', 'memory' for 'storage.type', found 'Tape'
+            |error: app.conf:4:1: expected one of 'debug', 'info', 'warn' for 'level', found 'Trace'
             |""".stripMargin
       )
+    }
+    test("case names") {
+      import autoset.derivation.ReaderUtils.lowerCamelCase
+      assert(lowerCamelCase("Postgres") == "postgres")
+      assert(lowerCamelCase("InMemory") == "inMemory")
+      assert(lowerCamelCase("S3") == "s3")
+      assert(lowerCamelCase("HTTPServer") == "httpServer")
+      assert(lowerCamelCase("URL") == "url")
+      assert(lowerCamelCase("alreadyLower") == "alreadyLower")
+      assert(lowerCamelCase("") == "")
+
+      // the Scala names, by overriding `caseName`
+      object scalaNames extends DefaultReaders:
+        override def caseName(name: String) = name
+        given Reader[Level] = readerFor[Level]
+      assert(summon[scalaNames.Reader[Level]].read(s("Info"), Vector.empty, Reporter()) == Some(Level.Info))
     }
     test("overridden case names and discriminator") {
       object kebabReaders extends DefaultReaders:
@@ -441,7 +457,7 @@ object DerivedReadersTest extends TestSuite:
     }
     test("derives on an enum") {
       val out = java.io.ByteArrayOutputStream()
-      val result = summon[autoset.Reader[Color]].read(s("Green"), Vector.empty, Reporter.printing(java.io.PrintStream(out)))
+      val result = summon[autoset.Reader[Color]].read(s("green"), Vector.empty, Reporter.printing(java.io.PrintStream(out)))
       assert(result.get == Color.Green)
     }
     test("name") {
