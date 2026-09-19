@@ -17,16 +17,20 @@ object LoadTest extends TestSuite:
       propsPrefix: String = null,
       propsBinds: Seq[(String, List[String])] = Seq(),
       args: Seq[Arg] = Seq(),
+      valueDirs: Seq[String] = Seq(),
+      setup: os.Path => Unit = _ => (),
       parsers: Map[String, FormatParser] = autoset.defaultParsers,
       reporter: Reporter = null
   ): (Option[Obj], String) =
     val dir = os.temp.dir()
     for (name, content) <- files do os.write(dir / os.RelPath(name), content, createFolders = true)
+    setup(dir)
     val out = java.io.ByteArrayOutputStream()
     val result = autoset.load(
       paths.map(os.FilePath(_)),
       pwd = dir,
       parsers = parsers,
+      valueDirs = valueDirs.map(os.FilePath(_)),
       env = env,
       envPrefix = envPrefix,
       envKeyReplacer = envKeyReplacer,
@@ -294,6 +298,56 @@ object LoadTest extends TestSuite:
            |}""",
         """|warning: arg --db: 'db' is set to a value, replacing an object from a.yaml:3:3
            |"""
+      )
+    }
+    test("value dirs") {
+      val files = Seq(
+        "app.json" -> """{"server": {"port": "1", "host": "h", "http": {"key": "from file"}}}""",
+        "secrets/server.http.key" -> "-----BEGIN KEY-----\nabc\n-----END KEY-----\n",
+        "secrets/server.host" -> "overridden by env",
+        // only one trailing newline is removed
+        "secrets/server.motd" -> "hello\n\n",
+        "secrets/server.windows" -> "crlf\r\n",
+        "secrets/.hidden" -> "x",
+        "secrets/..data/server.name" -> "from a link",
+        "secrets/nested/x" -> "x",
+        "secrets/a..b" -> "x"
+      )
+      check(
+        load(
+          files,
+          Seq("app.json"),
+          valueDirs = Seq("secrets"),
+          env = Map("APP_SERVER_HOST" -> "env"),
+          envPrefix = "APP_",
+          // like a Kubernetes volume
+          setup = dir => os.symlink(dir / "secrets" / "server.name", os.RelPath("..data/server.name"))
+        ),
+        """|{ // app.json
+           |  server: {
+           |    port: "1",
+           |    host: "env", // env APP_SERVER_HOST (overrides secrets/server.host, app.json:1:34)
+           |    http: { // secrets/server.http.key
+           |      key: "-----BEGIN KEY-----\nabc\n-----END KEY-----" // secrets/server.http.key (overrides app.json:1:55)
+           |    },
+           |    motd: "hello\n", // secrets/server.motd
+           |    name: "from a link", // secrets/server.name
+           |    windows: "crlf" // secrets/server.windows
+           |  }
+           |}""",
+        """|warning: secrets/a..b: ignoring invalid configuration key 'a..b'
+           |warning: skipping secrets/nested in value directory secrets, which is not a regular file
+           |"""
+      )
+    }
+    test("missing value dir") {
+      val (result, out) = load(Seq("file" -> ""), Seq(), valueDirs = Seq("nope", "file"))
+      assert(result.isEmpty)
+      assert(
+        out ==
+          """|error: value directory nope does not exist
+             |error: value directory file is not a directory
+             |""".stripMargin
       )
     }
     test("type conflicts") {

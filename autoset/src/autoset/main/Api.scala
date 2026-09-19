@@ -101,6 +101,18 @@ trait Api extends autoset.derivation.ReadersApi:
     *   Parsers for file extensions. Defaults to `defaultParsers`; to add a
     *   format, pass `defaultParsers + ("ext" -> parser)`.
     *
+    * @param valueDirs
+    *   Directories of files which each hold one config value: a file's name
+    *   is the config path, split on dots, and its contents are the value
+    *   (they are not parsed, but one trailing newline is removed, since files
+    *   often end with one, e.g. if written with `echo`). For example, a file `server.http.key` sets
+    *   `server.http.key`. This is convenient for secrets, which are often
+    *   provided as files (e.g. Kubernetes secrets mounted as volumes).
+    *   Entries starting with a dot are skipped, as are subdirectories, and
+    *   symbolic links are followed. Relative directories are resolved against
+    *   `pwd`. These values take precedence over config files, and are
+    *   overridden by environment variables, properties and arguments.
+    *
     * @param env
     *   Environment variables available for reading. Note that by default none
     *   will be read, unless other `env*` parameters are specified. Defaults to
@@ -177,6 +189,7 @@ trait Api extends autoset.derivation.ReadersApi:
     paths: Iterable[os.FilePath] = Seq(),
     pwd: os.Path = os.pwd,
     parsers: Map[String, autoset.model.FormatParser] = defaultParsers,
+    valueDirs: Iterable[os.FilePath] = Seq(),
     env: Map[String, String] = sys.env,
     envPrefix: String = null,
     envKeyReplacer: String => List[String] = defaultEnvKeyReplacer,
@@ -227,6 +240,25 @@ trait Api extends autoset.derivation.ReadersApi:
           finally stream.close()
     if failed then return None
 
+    for dir <- valueDirs do
+      val abs = os.Path(dir, pwd)
+      if !os.exists(abs) then reporter.error(s"value directory $dir does not exist")
+      else if !os.isDir(abs) then reporter.error(s"value directory $dir is not a directory")
+      else
+        for p <- os.list(abs, sort = true) if !p.last.startsWith(".") do
+          val name = p.relativeTo(pwd).toString
+          if os.isFile(p) then
+            val origin = Origin.File(name, -1, -1, -1, Some(p.toString))
+            val contents = os.read(p)
+            val trimmed =
+              if contents.endsWith("\r\n") then contents.dropRight(2)
+              else if contents.endsWith("\n") then contents.dropRight(1)
+              else contents
+            val value = Str(trimmed, LitKind.Unknown, List(origin))
+            setConfig(init, p.last.split("\\.", -1).toList, value, reporter)
+          else reporter.warn(s"skipping $name in value directory $dir, which is not a regular file")
+    if failed then return None
+
     def fromEnv(key: String, path: List[String]) =
       setConfig(init, path, Str(env(key), LitKind.Unknown, List(Origin.Env(key))), reporter)
 
@@ -265,6 +297,7 @@ trait Api extends autoset.derivation.ReadersApi:
     paths: Iterable[os.FilePath] = Seq(),
     pwd: os.Path = os.pwd,
     parsers: Map[String, autoset.model.FormatParser] = defaultParsers,
+    valueDirs: Iterable[os.FilePath] = Seq(),
     env: Map[String, String] = sys.env,
     envPrefix: String = null,
     envKeyReplacer: String => List[String] = defaultEnvKeyReplacer,
@@ -284,6 +317,7 @@ trait Api extends autoset.derivation.ReadersApi:
         paths = paths,
         pwd = pwd,
         parsers = parsers,
+        valueDirs = valueDirs,
         env = env,
         envPrefix = envPrefix,
         envKeyReplacer = envKeyReplacer,
