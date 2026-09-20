@@ -1494,3 +1494,10 @@ $ MYAPP_DB__MAX_POOL_SIZE=32 MYAPP_STORAGE__KIND=local-disk MYAPP_STORAGE__PATH=
 warning: app.cfg:7:11: unknown key 'storage.bucket'
 Config(Db(32,5 seconds),LocalDisk(/data))
 ```
+
+
+## Notice about LLM usage
+
+This project was built with the assistance of a large language model. Many
+examples and tests were generated. However, the core logic was hand coded
+initially and changes driven by specs.

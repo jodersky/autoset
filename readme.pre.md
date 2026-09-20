@@ -109,3 +109,9 @@ therefore gives you one place to define both.
 ##### Settings
 
 [include:settings]
+
+## Notice about LLM usage
+
+This project was built with the assistance of a large language model. Many
+examples and tests were generated. However, the core logic was hand coded
+initially and changes driven by specs.
