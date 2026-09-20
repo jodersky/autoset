@@ -11,7 +11,9 @@ trait CompositeReaders extends ReadersApi:
 
   /** Reads `null` as `None`, and anything else with the reader for `A`.
     *
-    * Case class fields of type `Option` are also `None` when missing.
+    * A case class field of this type is not optional by virtue of being an
+    * `Option`: it must be set, possibly to `null`. Give it a default, e.g.
+    * `nick: Option[String] = None`, for a field which may be left out.
     */
   given OptionReader[A](using elem: Reader[A]): Reader[Option[A]] with
     override def show(a: Option[A]) = Some(a.flatMap(elem.show).getOrElse(Null(Nil)))

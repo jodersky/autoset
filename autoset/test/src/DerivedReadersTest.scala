@@ -22,7 +22,9 @@ case class Service(name: String, server: Server) derives autoset.Reader
 case class Client(url: String, retries: Int = 3) derives DerivedReadersTest.readers.Reader
 case class UsesClient(client: Client)
 
-case class Optional(name: String, nick: Option[String], age: Option[Int] = Some(18))
+case class Optional(name: String, nick: Option[String] = None, age: Option[Int] = Some(18))
+// an option with no default must be set, possibly to null
+case class Nullable(x: Option[String])
 // an object-valued default, whose type has a required field of its own
 case class Nested(message: String, extra: Int = 42)
 case class Outer(nest: Nested = Nested("hello"), plain: String = "yes")
@@ -161,7 +163,7 @@ object DerivedReadersTest extends TestSuite:
       assert(read[Db](v)._1.get == Db("localhost", 5432, ""))
       assert(read[Db](v)._2 == "")
     }
-    test("an option with no default is null") {
+    test("a default of None is shown as null") {
       given Reader[Optional] = readers.readerFor[Optional]
       val v = obj(file(1))("name" -> s("n"))
       assert(read[Optional](v)._1.get == Optional("n", None, Some(18)))
@@ -448,7 +450,7 @@ object DerivedReadersTest extends TestSuite:
       assert(read[UsesClient](v)._1.get == UsesClient(Client("u", 5)))
     }
     test("optional fields") {
-      // missing options are `None`, unless they have a default
+      // a field is optional if it has a default, whatever its type
       assert(read[Optional](obj(file(1))("name" -> s("n")))._1.get == Optional("n", None, Some(18)))
       val v = obj(file(1))("name" -> s("n"), "nick" -> s("x"), "age" -> nul(file(1)))
       assert(read[Optional](v)._1.get == Optional("n", Some("x"), None))
@@ -460,6 +462,16 @@ object DerivedReadersTest extends TestSuite:
             |error: app.conf:2:1: expected an integer for 'age', found 'old'
             |""".stripMargin
       )
+    }
+    test("an option is not optional") {
+      given Reader[Nullable] = readers.readerFor[Nullable]
+      // being an `Option` says the value may be null, not that the key may be
+      // left out: only a default makes a field optional
+      assert(read[Nullable](obj(file(1))("x" -> nul(file(2))))._1.get == Nullable(None))
+      assert(read[Nullable](obj(file(1))("x" -> s("v")))._1.get == Nullable(Some("v")))
+      val (result, out) = read[Nullable](obj(file(1))())
+      assert(result.isEmpty)
+      assert(out == "error: app.conf:1:1: missing required field 'x'\n")
     }
     test("field names") {
       import autoset.derivation.ReaderUtils.{kebabify, snakify}

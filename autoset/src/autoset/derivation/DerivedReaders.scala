@@ -35,8 +35,10 @@ trait DerivedReaders extends ReadersApi:
     *     the reader for its type, which must be available as a given (except
     *     for unions of string literals, whose reader is derived). A field
     *     that is missing from the object takes the value of that field in the
-    *     `base` it is read with, else its default value if it has one, else
-    *     `None` if it is an `Option`, and is an error otherwise. A value
+    *     `base` it is read with, else its default value if it has one, and is
+    *     an error otherwise. A field of type `Option` is not special: it may
+    *     be set to `null`, which is `None`, but a field is only optional if
+    *     it has a default, e.g. `nick: Option[String] = None`. A value
     *     which no source provided is recorded in the object, so that it shows
     *     the configuration which was used; it has the `Origin.Default`
     *     origin, which readers treat as absent. An object which is only
@@ -184,9 +186,6 @@ object DerivedReaders:
         default: Option[Term],
         annotations: List[Term]
     ):
-      /** Whether the field is an `Option`, which is `None` when missing. */
-      def isOption: Boolean = tpe.typeSymbol == TypeRepr.of[Option[Any]].typeSymbol
-
       /** The annotations of type `T`. */
       def annotated[T: Type]: List[Term] = annotations.filter(_.tpe <:< TypeRepr.of[T])
 
@@ -399,7 +398,6 @@ object DerivedReaders:
         }
         val own: Expr[Option[F]] = field.default match
           case Some(default) => '{ Some(${ default.asExprOf[F] }) }
-          case None if field.isOption => '{ Some(None) }.asExprOf[Option[F]]
           case None => '{ None }
         '{ $fromBase.orElse($own) }
 
