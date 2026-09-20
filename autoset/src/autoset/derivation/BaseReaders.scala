@@ -289,3 +289,41 @@ trait BaseReaders extends ReadersApi:
     override def show(a: java.nio.file.Path) = Some(Str(a.toString, LitKind.String, Nil))
     def read(value: Value, base: Option[java.nio.file.Path], ctx: Context) =
       OsPathReader.read(value, None, ctx).map(_.toNIO)
+
+  private val expectedBase64 = "base64-encoded data"
+
+  /** Decode base64 data, accepting both the standard and URL-safe alphabets,
+    * with or without padding. Whitespace is ignored, so that data may be
+    * wrapped over several lines.
+    */
+  private def decodeBase64(raw: String): Either[String, Array[Byte]] =
+    val s = raw.filterNot(_.isWhitespace)
+    val decoder =
+      if s.contains('-') || s.contains('_') then java.util.Base64.getUrlDecoder
+      else java.util.Base64.getDecoder
+    try Right(decoder.decode(s))
+    catch case _: IllegalArgumentException => Left(expectedBase64)
+
+  /** Reads binary data, such as a key or a certificate, from a base64-encoded
+    * string (see `decodeBase64` for what is accepted).
+    */
+  given ByteArrayReader: Reader[Array[Byte]] =
+    new ParsedReader[Array[Byte]](expectedBase64)(decodeBase64):
+      override def show(a: Array[Byte]) =
+        Some(Str(java.util.Base64.getEncoder.encodeToString(a), LitKind.String, Nil))
+
+  /** Reads binary data from a base64-encoded string, as a source which can be
+    * read as many times as needed (see `ByteArrayReader`).
+    */
+  given ReadableReader: Reader[geny.Readable] with
+    // showing a `Readable` reads it, which consumes it if it is backed by a
+    // stream. Only defaults are shown, and those are values a program built
+    // itself, which are backed by bytes or a string in practice.
+    override def show(a: geny.Readable) =
+      val out = java.io.ByteArrayOutputStream()
+      try
+        a.writeBytesTo(out)
+        ByteArrayReader.show(out.toByteArray)
+      catch case scala.util.control.NonFatal(_) => None
+    def read(value: Value, base: Option[geny.Readable], ctx: Context) =
+      ByteArrayReader.read(value, None, ctx).map(geny.Readable.ByteArrayReadable(_))

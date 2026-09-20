@@ -29,6 +29,10 @@ case class Config(
   pattern: scala.util.matching.Regex,
   workers: Range, // '1 to 8', '0 until 8 by 2'
 
+  // binary data, from a base64-encoded string
+  apiKey: Array[Byte],
+  license: geny.Readable, // the same, as a source which can be read repeatedly
+
   // any collection with a `Factory`: Seq, List, Vector, Set, mutable.Buffer...
   hosts: Seq[String],
   tags: Set[String],
@@ -57,6 +61,8 @@ def run() =
   println(s"startsAt  = ${config.startsAt}")
   println(s"logFile   = ${config.logFile.relativeTo(os.pwd)}")
   println(s"workers   = ${config.workers}")
+  println(s"apiKey    = ${config.apiKey.length} bytes")
+  println(s"license   = ${String(config.license.readBytesThrough(_.readAllBytes()))}")
   println(s"hosts     = ${config.hosts}")
   println(s"tags      = ${config.tags}")
   println(s"weights   = ${config.weights}")
@@ -80,6 +86,8 @@ retention = PT720H
 startsAt  = 04:30
 logFile   = log/example.log
 workers   = Range 1 to 8
+apiKey    = 12 bytes
+license   = MIT
 hosts     = List(a.example.com, b.example.com)
 tags      = Set(red, green)
 weights   = Map(a -> 0.5, b -> 1.5)

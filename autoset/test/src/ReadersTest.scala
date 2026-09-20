@@ -371,6 +371,39 @@ object ReadersTest extends TestSuite:
       val bad = arr(file(1))(str("x", file(1)))
       assert(err[Array[Int]](bad) == "expected an integer for 'a.b.0', found 'x'")
     }
+    test("byte array") {
+      def bytes(raw: String) = ok[Array[Byte]](raw).toList
+      def ascii(s: String) = s.map(_.toByte).toList
+      assert(bytes("aGVsbG8=") == ascii("hello"))
+      // padding is optional
+      assert(bytes("aGVsbG8") == ascii("hello"))
+      // whitespace, e.g. from a value wrapped over several lines, is ignored
+      assert(bytes(" aGVs\n  bG8= ") == ascii("hello"))
+      assert(bytes("") == Nil)
+      // both alphabets decode to the same bytes
+      assert(bytes("+/8=") == List(0xfb.toByte, 0xff.toByte))
+      assert(bytes("-_8=") == List(0xfb.toByte, 0xff.toByte))
+      val expected = "expected base64-encoded data for 'a.b', found"
+      for bad <- List("a", "aGVsbG8==", "!!", "aG$s") do
+        assert(err[Array[Byte]](bad) == s"$expected '$bad'")
+      // an array of bytes is base64, not an array of numbers
+      assert(err[Array[Byte]](arr(file(1))(str("1", file(1)))) == s"$expected an array")
+      val shown = readers.ByteArrayReader.show(ascii("hello").toArray)
+      assert(shown == Some(Str("aGVsbG8=", LitKind.String, Nil)))
+    }
+    test("readable") {
+      def drain(r: geny.Readable) = r.readBytesThrough: in =>
+        LazyList.continually(in.read()).takeWhile(_ >= 0).map(_.toByte).toList
+      val readable = ok[geny.Readable]("aGVsbG8=")
+      val hello = "hello".map(_.toByte).toList
+      assert(drain(readable) == hello)
+      // the bytes are kept, so the source can be read again
+      assert(drain(readable) == hello)
+      assert(err[geny.Readable]("!!") == "expected base64-encoded data for 'a.b', found '!!'")
+      // a readable is shown as the base64 of the bytes it reads
+      val shown = readers.ReadableReader.show(geny.Readable.ByteArrayReadable(hello.toArray))
+      assert(shown == Some(Str("aGVsbG8=", LitKind.String, Nil)))
+    }
     test("paths") {
       def readPath(raw: String, origin: Origin): (Option[os.Path], String) =
         val out = java.io.ByteArrayOutputStream()
