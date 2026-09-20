@@ -1,8 +1,14 @@
-package example
+# Autoset
 
-// 1. Define your config model in Scala
+Read configuration from multiple formats, and map it to scala types.
 
-//snippet:start
+## Example
+
+
+1. Define your config model in Scala
+
+
+```scala
 case class AppConfig(
   main: ServerConfig,
   metrics: ServerConfig,
@@ -27,17 +33,36 @@ enum DatabaseConfig derives autoset.Reader:
     user: String = "postgres",
     @autoset.secret password: String
   )
-//snippet:end
+```
 
-// 2. Your config file (can be YAML, JSON, INI, or more as described below)
+2. Your config file (can be YAML, JSON, INI, or more as described below)
 
-// config.yaml:
-// ```yaml
-//include:../config.yaml
-// ```
+config.yaml:
+```yaml
+main:
+  listeners:
+    - scheme: http
+      port: 80
+    - scheme: https
+      port: 443
 
-// 3. Read your config file to an instance of the config model
-//snippet:start
+metrics:
+  listeners:
+    - scheme: http
+      port: 80
+
+db:
+  type: postgres
+  uri: jdbc:postgresql://host:port/database
+  # The password will be injected from another file
+  #password:
+
+root: extra
+```
+
+3. Read your config file to an instance of the config model
+
+```scala
 @main
 def run() =
 
@@ -56,11 +81,12 @@ def run() =
 
   // do something with the parsed config
   println(appConfig)
-//snippet:end
+```
 
-// You can see the configuration the application used
+You can see the configuration the application used
 
-/* usage snippet
+
+```
 $ ./app
 { // config.yaml
   main: {
@@ -94,11 +120,12 @@ $ ./app
   root: "extra"
 }
 ...
-*/
+```
 
-// Override by setting an environment variable
+Override by setting an environment variable
 
-/* usage snippet
+
+```
 $ MYAPP_DB_USER=foo ./app
 ...
 db: {
@@ -106,4 +133,4 @@ db: {
     user: "foo" // env MYAPP_DB_USER
   },
 ...
-*/
+```
