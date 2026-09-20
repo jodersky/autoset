@@ -17,7 +17,31 @@ object thirdparty:
   val javatimeTzdb = mvn"io.github.cquiroz::scala-java-time-tzdb::2.6.0"
 
 trait Publish extends PublishModule:
-  def publishVersion = "0.1.0"
+
+  /** The version of this project, derived from git.
+    *
+    * It is the output of `git describe`. If the working tree is dirty, the
+    * current timestamp is appended, so that every build of uncommitted changes
+    * gets a unique version.
+    */
+  def publishVersion = Task.Input:
+    val dirtyMarker = "-dirty"
+    val result = os
+      .proc("git", "describe", "--tags", "--always", "--dirty=" + dirtyMarker)
+      .call(cwd = Task.ctx().workspace, check = false, stderr = os.Pipe)
+
+    val described =
+      if result.exitCode == 0 then result.out.trim().stripPrefix("v")
+      else "0.0.0" // no commits yet
+
+    if described.endsWith(dirtyMarker) then
+      val timestamp = java.time.format.DateTimeFormatter
+        .ofPattern("yyyyMMddHHmmss")
+        .withZone(java.time.ZoneOffset.UTC)
+        .format(java.time.Instant.now())
+      s"${described.dropRight(dirtyMarker.length)}-$timestamp"
+    else described
+
   def pomSettings = PomSettings(
     description = "A configuration parsing library for Scala 3",
     organization = "io.crashbox",

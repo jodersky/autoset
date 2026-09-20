@@ -1,6 +1,17 @@
 # Autoset
 
-Read configuration from multiple formats, and map it to scala types.
+Automatic settings for your application. Read configuration from various
+formats and places, and map it to scala types.
+
+Autoset aims to make configuring your application get out of the way, so that
+you can focus on writing the important parts.
+
+The idea is simple: define the configuration you need as a case class (or many),
+then have autoset read it from files, the environment, or the command line args.
+If it succeeds, you get a complete and well-typed configuration which won't fail
+when accessed at runtime. If it fails, you'll get a helpful report of the
+problem. You'll also be able to inspect what configuration your application is
+actually using, along with information on where each config value came from.
 
 ## Example
 
@@ -158,6 +169,19 @@ db: {
   - [Config traits](#config-traits)
     - [Readers for types you don't own](#readers-for-types-you-dont-own)
     - [Settings](#settings)
+
+Autoset reads configuration in two steps. First, every source — config files in
+whatever format, value directories, environment variables, system properties
+and command line arguments — is parsed into a single intermediate
+configuration object (an `autoset.Obj`): a tree of objects, lists and strings
+in which every value remembers where it came from. Merging happens at this
+level, so no format needs to know about any other. Second, that object is
+translated into your own Scala types by readers, which is where strings become
+`Int`s, `Duration`s and case classes, where defaults are filled in, and where
+anything wrong is reported against the origin recorded in the first step. The
+two sections below follow those two steps; `autoset.read` does both in one
+call, and hands back the Scala value alongside the intermediate object it was
+read from.
 
 ### Parsing config
 
