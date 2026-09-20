@@ -6,8 +6,10 @@ sealed trait Value:
   /** Origins of this value and of the values it replaced at the same key, most
     * recent first. Never empty.
     *
-    * For objects, this lists every source that defined the object; merged-in
-    * fields carry their own origins.
+    * For objects, this lists every source that contributed to the object,
+    * including ones which only set something inside it; merged-in fields
+    * carry their own origins. See [[Obj.declaredAt]] for the sources which
+    * declared the object itself.
     */
   var origins: List[Origin]
 
@@ -159,7 +161,26 @@ object Value:
 case class Obj(
     fields: m.LinkedHashMap[String, Value],
     var origins: List[Origin]
-) extends Value
+) extends Value:
+
+  /** Origins where this object was written as an object, most recent first:
+    * a mapping, a section, or a flat-key file, where another key under this
+    * path could be added. In other words, the places a missing field could be
+    * added, which is where readers report one.
+    *
+    * This is empty for objects which only exist because a flat key set
+    * something inside them, e.g. an environment variable, a file in a value
+    * directory or a command line argument: those name a single value, and
+    * offer no place to add a field. It is also empty for an object which
+    * nothing declared, e.g. the root of a configuration built from
+    * environment variables only.
+    */
+  var declaredAt: List[Origin] = origins.filter:
+    case _: Origin.File | _: Origin.Code => true
+    case _ => false
+
+  /** Where a field missing from this object should be added, if known. */
+  def declarationOrigin: Option[Origin] = declaredAt.headOption
 
 case class Arr(
     values: m.ListBuffer[Value],

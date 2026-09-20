@@ -113,7 +113,7 @@ object DerivedReaders:
     *               case Some(x) => a = x
     *               case None => ok = false
     *           case None =>
-    *             reporter.error("missing required field '" + ... + "'", obj.effectiveOrigin)
+    *             ReaderUtils.missingField(obj, path :+ nameA, reporter)
     *             ok = false
     *
     *         val nameB = api.fieldName("b")
@@ -320,8 +320,7 @@ object DerivedReaders:
                   assign(x, '{ None }.asTerm)
                 case None =>
                   '{
-                    val fieldPath = ($path :+ $name).mkString(".")
-                    $reporter.error(s"missing required field '$fieldPath'", $obj.effectiveOrigin)
+                    ReaderUtils.missingField($obj, $path :+ $name, $reporter)
                     $fail
                   }
             }
@@ -458,10 +457,7 @@ object DerivedReaders:
               case Some(tag @ Str(raw, _, _)) =>
                 ${ dispatch('{ raw.trim }, 'names, 'expected, 'disc, 'tag, '{ $path :+ disc }, 'obj) }
               case Some(other) => ReaderUtils.mismatch(expected, other, $path :+ disc, $reporter)
-              case None =>
-                val tagPath = ($path :+ disc).mkString(".")
-                $reporter.error(s"missing required field '$tagPath'", obj.effectiveOrigin)
-                None
+              case None => ReaderUtils.missingField(obj, $path :+ disc, $reporter)
           case _ =>
             ReaderUtils.mismatch(
               ${ if allSingletons then 'expected else '{ "an object" } },

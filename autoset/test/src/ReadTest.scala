@@ -14,7 +14,8 @@ object ReadTest extends TestSuite:
       files: Seq[(String, String)],
       paths: Seq[String],
       env: Map[String, String] = Map(),
-      args: Seq[Arg] = Seq()
+      args: Seq[Arg] = Seq(),
+      valueDirs: Seq[String] = Seq()
   ): (Option[(A, Obj)], String, os.Path) =
     val dir = os.temp.dir()
     for (name, content) <- files do os.write(dir / os.RelPath(name), content, createFolders = true)
@@ -22,6 +23,7 @@ object ReadTest extends TestSuite:
     val result = autoset.read[A](
       paths.map(os.FilePath(_)),
       pwd = dir,
+      valueDirs = valueDirs.map(os.FilePath(_)),
       env = env,
       envPrefix = "APP_",
       props = Map(),
@@ -83,6 +85,53 @@ object ReadTest extends TestSuite:
       val (failed, out, _) = read[ReadApp](files, Seq("app.json"), args = Seq(Arg("--db-port", List("db", "port"), "http")))
       assert(failed.isEmpty)
       assert(out == "error: arg --db-port: expected an integer for 'db.port', found 'http'\n")
+    }
+    test("missing fields point at files") {
+      // a value file or an environment variable contributes to the objects on
+      // its path, but it holds a single value, so it is no place to add a
+      // field: the error points at the file which declared the object
+      val files = Seq(
+        "app.json" -> """{"name": "app", "data": "d", "db": {"host": "h"}}""",
+        "secrets/db.password" -> "hunter2\n"
+      )
+      def readApp[A: autoset.Reader] =
+        read[A](files, Seq("app.json"), env = Map("APP_DB_PORT" -> "1234"), valueDirs = Seq("secrets"))
+
+      val (result, out, _) = readApp[ReadApp]
+      assert(result.get._1.db == ReadDb("h", 1234, "hunter2"))
+      assert(out == "")
+
+      // the value file and the environment variable are the most recent
+      // contributors to the root object and to `db`
+      val config = result.get._2
+      assert(config.effectiveOrigin == Origin.Env("APP_DB_PORT"))
+      // but only the file declared them, and that is where a field would go
+      assert(config.declarationOrigin.map(_.pretty) == Some("app.json:1:1"))
+      val db = config.fields("db").asInstanceOf[Obj]
+      assert(db.effectiveOrigin == Origin.Env("APP_DB_PORT"))
+      assert(db.declarationOrigin.map(_.pretty) == Some("app.json:1:36"))
+
+      case class Strict(name: String, db: ReadDb, data: os.Path, nope: String) derives autoset.Reader
+      val (failed, errors, _) = readApp[Strict]
+      assert(failed.isEmpty)
+      assert(errors == "error: app.json:1:1: missing required field 'nope'\n")
+    }
+    test("missing fields with nothing to point at") {
+      // no file declares an object here, so there is no place to add the field,
+      // and the error has no origin rather than a misleading one
+      val (result, out, _) = read[ReadApp](
+        Seq("secrets/db.password" -> "hunter2"),
+        Seq(),
+        env = Map("APP_NAME" -> "app"),
+        valueDirs = Seq("secrets")
+      )
+      assert(result.isEmpty)
+      assert(
+        out ==
+          """error: missing required field 'db.host'
+            |error: missing required field 'data'
+            |""".stripMargin
+      )
     }
     test("secret errors") {
       case class Port(@secret port: Int) derives autoset.Reader

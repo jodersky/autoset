@@ -53,6 +53,21 @@ object ReaderUtils:
     reporter.error(s"expected $expected$at, found ${describe(value)}", value.effectiveOrigin)
     None
 
+  /** Report that the field at `path` is required, but missing from `obj`.
+    *
+    * The error is reported where `obj` was declared, since that is where the
+    * field could be added. An object which nothing declared, e.g. one which
+    * only exists because an environment variable set something inside it, has
+    * no such place, and then the error has no origin: a location which cannot
+    * be acted on would be worse than none.
+    */
+  def missingField(obj: Obj, path: Vector[String], reporter: Reporter): None.type =
+    val message = s"missing required field '${path.mkString(".")}'"
+    obj.declarationOrigin match
+      case Some(origin) => reporter.error(message, origin)
+      case None => reporter.error(message)
+    None
+
   /** Look up the value of a field whose key is `name`, and which used to be
     * at the `deprecated` keys, in `obj`, returning the key it is at and its
     * value.

@@ -134,6 +134,18 @@ object DerivedReadersTest extends TestSuite:
       assert(result.isEmpty)
       assert(out == "error: app.conf:1:1: missing required field 'host'\n")
     }
+    test("missing field without a declaration") {
+      // an object which only exists because a flat key set something inside it
+      // is no place to add a field, so the error has no origin
+      val (result, out) = read[Db](obj(env("APP_DB_PORT"))("port" -> s("1")))
+      assert(result.isEmpty)
+      assert(out == "error: missing required field 'host'\n")
+      // the same for a missing discriminator
+      assert(
+        read[Storage](obj(env("APP_STORAGE_PATH"))("path" -> s("/d")))._2 ==
+          "error: missing required field 'type'\n"
+      )
+    }
     test("all errors are reported") {
       val (result, out) = read[Db](obj(file(1))("port" -> s("x", 2)))
       assert(result.isEmpty)

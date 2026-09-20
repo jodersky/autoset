@@ -377,6 +377,8 @@ trait Api extends autoset.derivation.ReadersApi:
           theirs.origins = theirs.origins ::: mine.origins
           into.fields(k) = theirs
     into.origins = from.origins ::: into.origins
+    // both files declared the object, so a field could be added to either
+    into.declaredAt = from.declaredAt ::: into.declaredAt
 
   private def warnReplaced(
       path: List[String],
@@ -417,6 +419,9 @@ trait Api extends autoset.derivation.ReadersApi:
       )
     else
       var curr = obj
+      // objects on the path only contribute here, they aren't declared by this
+      // value: it names a single leaf, and offers no place to add a field, so
+      // `declaredAt` is left alone (and cleared on objects created below)
       curr.origins = value.origins ::: curr.origins
       for (segment, i) <- path.init.zipWithIndex do
         curr = curr.fields.get(segment) match
@@ -425,6 +430,9 @@ trait Api extends autoset.derivation.ReadersApi:
             o
           case existing =>
             val o = model.Obj(collection.mutable.LinkedHashMap.empty, value.origins)
+            // nothing declared this object, it only exists to hold the value
+            // (any replaced value is not an object, so it declared nothing)
+            o.declaredAt = Nil
             for e <- existing do
               warnReplaced(path.take(i + 1), e, o, reporter)
               o.origins = o.origins ::: e.origins
