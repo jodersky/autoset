@@ -170,18 +170,14 @@ db: {
     - [Readers for types you don't own](#readers-for-types-you-dont-own)
     - [Settings](#settings)
 
-Autoset reads configuration in two steps. First, every source — config files in
-whatever format, value directories, environment variables, system properties
-and command line arguments — is parsed into a single intermediate
-configuration object (an `autoset.Obj`): a tree of objects, lists and strings
-in which every value remembers where it came from. Merging happens at this
-level, so no format needs to know about any other. Second, that object is
-translated into your own Scala types by readers, which is where strings become
-`Int`s, `Duration`s and case classes, where defaults are filled in, and where
-anything wrong is reported against the origin recorded in the first step. The
-two sections below follow those two steps; `autoset.read` does both in one
-call, and hands back the Scala value alongside the intermediate object it was
-read from.
+Autoset reads configuration in two steps. First, every source is parsed into a
+single intermediate configuration object (an `autoset.Obj`): a tree of objects,
+lists and strings in which every value remembers where it came from. Second,
+that object is translated into your own Scala types by readers, which is where
+strings become `Int`s, `Duration`s and case classes, where defaults are filled
+in, and where anything wrong is reported against the origin recorded in the
+first step. The two main sections "Parsing config" and "Mapping to scala case
+classes" below follow those two steps.
 
 ### Parsing config
 
@@ -200,9 +196,7 @@ The following formats are provided out-of-the-box:
 A user can also define their own formats, by implementing a parser.
 
 
-Every config file is parsed according to its extension. A file without an
-extension is parsed as INI, which is a reasonable default for the files
-found in `/etc`.
+Every config file is parsed according to its extension.
 
 This example spreads one configuration over one file per supported format,
 to show what each of them looks like.
@@ -257,8 +251,7 @@ case class Config(
   server: Server,
   db: Db,
   logging: Logging,
-  limits: Limits,
-  features: Map[String, Boolean]
+  limits: Limits
 ) derives autoset.Reader
 
 case class App(name: String, version: String) derives autoset.Reader
@@ -269,72 +262,7 @@ case class Limits(
   timeout: scala.concurrent.duration.Duration,
   retries: Int
 ) derives autoset.Reader
-```
 
-##### Defining your own format
-
-A format is a `autoset.FormatParser`, which turns the contents of a file
-into a configuration object. Values carry an `autoset.Origin`, so that
-errors can point back at the line they came from.
-
-Here is a parser for a minimal `key value` format, one pair per line:
-
-`features.rules`
-```
-# a custom format: one "key value" pair per line
-features.beta true
-features.tracing false
-```
-
-
-```scala
-object RulesParser extends autoset.FormatParser:
-  def parse(
-    name: String,
-    stream: java.io.InputStream,
-    sizeHint: Int,
-    reporter: autoset.Reporter
-  ): Option[autoset.Obj] =
-    val root = autoset.Obj(
-      collection.mutable.LinkedHashMap(),
-      List(autoset.Origin.File(name, 0, 1, 1))
-    )
-    val text = String(stream.readAllBytes(), "utf-8")
-    var ok = true
-
-    for (line, idx) <- text.linesIterator.zipWithIndex if line.trim().nonEmpty do
-      // origins point back at the source, so that errors can name the line a
-      // value came from
-      val origin = autoset.Origin.File(name, -1, idx + 1, 1)
-      line.trim().split(" ", 2) match
-        case _ if line.trim().startsWith("#") => // a comment
-        case Array(key, value) =>
-          // nest dotted keys into objects, so that `a.b value` sets `a.b`
-          var obj = root
-          val segments = key.split("\\.", -1).toList
-          for seg <- segments.init do
-            obj = obj.fields
-              .getOrElseUpdate(
-                seg,
-                autoset.Obj(collection.mutable.LinkedHashMap(), List(origin))
-              )
-              .asInstanceOf[autoset.Obj]
-          obj.fields(segments.last) =
-            autoset.Str(value.trim(), autoset.LitKind.Unknown, List(origin))
-        case _ =>
-          // a parser reports problems instead of throwing, and returns `None`
-          // if it reported an error
-          reporter.error("expected 'key value'", origin, line)
-          ok = false
-
-    Option.when(ok)(root)
-```
-
-Pass it in the `parsers` map, keyed by the file extension it handles. Adding
-to `autoset.defaultParsers` keeps the built-in formats available:
-
-
-```scala
 @main
 def run() =
   val (config, raw) = autoset.read[Config](
@@ -343,10 +271,8 @@ def run() =
       os.pwd / "server.yaml",
       os.pwd / "db.ini",
       os.pwd / "logging.conf",
-      os.pwd / "limits.properties",
-      os.pwd / "features.rules"
-    ),
-    parsers = autoset.defaultParsers + ("rules" -> RulesParser)
+      os.pwd / "limits.properties"
+    )
   ).getOrElse(sys.exit(1))
 
   println(raw.pretty())
@@ -379,10 +305,6 @@ $ ./app
   limits: { // limits.properties
     timeout: "30 seconds",
     retries: "3"
-  },
-  features: { // features.rules
-    beta: "true",
-    tracing: "false"
   }
 }
 ...

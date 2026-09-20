@@ -1,8 +1,6 @@
 package example
 
-// Every config file is parsed according to its extension. A file without an
-// extension is parsed as INI, which is a reasonable default for the files
-// found in `/etc`.
+// Every config file is parsed according to its extension.
 //
 // This example spreads one configuration over one file per supported format,
 // to show what each of them looks like.
@@ -43,8 +41,7 @@ case class Config(
   server: Server,
   db: Db,
   logging: Logging,
-  limits: Limits,
-  features: Map[String, Boolean]
+  limits: Limits
 ) derives autoset.Reader
 
 case class App(name: String, version: String) derives autoset.Reader
@@ -55,68 +52,7 @@ case class Limits(
   timeout: scala.concurrent.duration.Duration,
   retries: Int
 ) derives autoset.Reader
-//snippet:end
 
-// ##### Defining your own format
-//
-// A format is a `autoset.FormatParser`, which turns the contents of a file
-// into a configuration object. Values carry an `autoset.Origin`, so that
-// errors can point back at the line they came from.
-//
-// Here is a parser for a minimal `key value` format, one pair per line:
-
-// `features.rules`
-// ```
-//include:../features.rules
-// ```
-
-//snippet:start
-object RulesParser extends autoset.FormatParser:
-  def parse(
-    name: String,
-    stream: java.io.InputStream,
-    sizeHint: Int,
-    reporter: autoset.Reporter
-  ): Option[autoset.Obj] =
-    val root = autoset.Obj(
-      collection.mutable.LinkedHashMap(),
-      List(autoset.Origin.File(name, 0, 1, 1))
-    )
-    val text = String(stream.readAllBytes(), "utf-8")
-    var ok = true
-
-    for (line, idx) <- text.linesIterator.zipWithIndex if line.trim().nonEmpty do
-      // origins point back at the source, so that errors can name the line a
-      // value came from
-      val origin = autoset.Origin.File(name, -1, idx + 1, 1)
-      line.trim().split(" ", 2) match
-        case _ if line.trim().startsWith("#") => // a comment
-        case Array(key, value) =>
-          // nest dotted keys into objects, so that `a.b value` sets `a.b`
-          var obj = root
-          val segments = key.split("\\.", -1).toList
-          for seg <- segments.init do
-            obj = obj.fields
-              .getOrElseUpdate(
-                seg,
-                autoset.Obj(collection.mutable.LinkedHashMap(), List(origin))
-              )
-              .asInstanceOf[autoset.Obj]
-          obj.fields(segments.last) =
-            autoset.Str(value.trim(), autoset.LitKind.Unknown, List(origin))
-        case _ =>
-          // a parser reports problems instead of throwing, and returns `None`
-          // if it reported an error
-          reporter.error("expected 'key value'", origin, line)
-          ok = false
-
-    Option.when(ok)(root)
-//snippet:end
-
-// Pass it in the `parsers` map, keyed by the file extension it handles. Adding
-// to `autoset.defaultParsers` keeps the built-in formats available:
-
-//snippet:start
 @main
 def run() =
   val (config, raw) = autoset.read[Config](
@@ -125,10 +61,8 @@ def run() =
       os.pwd / "server.yaml",
       os.pwd / "db.ini",
       os.pwd / "logging.conf",
-      os.pwd / "limits.properties",
-      os.pwd / "features.rules"
-    ),
-    parsers = autoset.defaultParsers + ("rules" -> RulesParser)
+      os.pwd / "limits.properties"
+    )
   ).getOrElse(sys.exit(1))
 
   println(raw.pretty())
@@ -160,10 +94,6 @@ $ ./app
   limits: { // limits.properties
     timeout: "30 seconds",
     retries: "3"
-  },
-  features: { // features.rules
-    beta: "true",
-    tracing: "false"
   }
 }
 ...

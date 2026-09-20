@@ -1,3 +1,0 @@
-# a custom format: one "key value" pair per line
-features.beta true
-features.tracing false
