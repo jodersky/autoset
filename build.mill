@@ -208,9 +208,31 @@ object examples extends Module:
   end ExampleModule
 
   object demo extends ExampleModule
+  object formats extends ExampleModule
+  object dirs extends ExampleModule
+  object valuedirs extends ExampleModule
+  object overrides extends ExampleModule
+  object origins extends ExampleModule
+  object readers extends ExampleModule
+  object derivation extends ExampleModule
+  object customreaders extends ExampleModule
+  object errors extends ExampleModule
+  object configtraits extends ExampleModule
+  object settings extends ExampleModule
 
   val all = Seq(
-    demo
+    demo,
+    formats,
+    dirs,
+    valuedirs,
+    overrides,
+    origins,
+    readers,
+    derivation,
+    customreaders,
+    errors,
+    configtraits,
+    settings
   )
 
 // update actual readme from snippets in example apps

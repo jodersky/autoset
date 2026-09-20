@@ -1,0 +1,5 @@
+cache:
+  size: 512MB
+
+theme:
+  background: "0x1e1e2e"

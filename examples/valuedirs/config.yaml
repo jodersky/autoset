@@ -1,0 +1,6 @@
+db:
+  host: localhost
+  user: example
+
+api:
+  url: https://api.example.com

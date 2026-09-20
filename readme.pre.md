@@ -8,6 +8,27 @@ Read configuration from multiple formats, and map it to scala types.
 
 ## Features
 
+- [Parsing config](#parsing-config)
+  - [Various formats](#various-formats)
+    - [Defining your own format](#defining-your-own-format)
+  - [Merge configuration from various places](#merge-configuration-from-various-places)
+    - [Merge from multiple files and directories](#merge-from-multiple-files-and-directories)
+    - [Value directories](#value-directories)
+    - [Environment variables, system props, and args](#environment-variables-system-props-and-args)
+  - [Show where your app got your config from](#show-where-your-app-got-your-config-from)
+- [Mapping to scala case class](#mapping-to-scala-case-class)
+  - [Readers](#readers)
+  - [Deriving readers for your own types](#deriving-readers-for-your-own-types)
+    - [Case classes](#case-classes)
+    - [Sealed types and enums](#sealed-types-and-enums)
+    - [Unions of string literals](#unions-of-string-literals)
+  - [Writing your own reader](#writing-your-own-reader)
+  - [Errors and warnings](#errors-and-warnings)
+    - [Collecting diagnostics](#collecting-diagnostics)
+  - [Config traits](#config-traits)
+    - [Readers for types you don't own](#readers-for-types-you-dont-own)
+    - [Settings](#settings)
+
 ### Parsing config
 
 #### Various formats
@@ -24,43 +45,67 @@ The following formats are provided out-of-the-box:
 
 A user can also define their own formats, by implementing a parser.
 
-TODO: example showing various formats
+[include:formats]
 
 #### Merge configuration from various places
 
-##### Merge from multiple directories
+Configuration is rarely in one place: a package ships defaults, an operator
+drops in overrides, an orchestrator mounts secrets, and a deployment sets a
+couple of environment variables. Every source is merged into one configuration
+object, in a fixed order: files and directories first, then value directories,
+then environment variables, system properties and finally command line
+arguments.
 
-TODO: include example which shows how files are merged from directories,
+Merging is recursive for objects, so a source which sets one key of an object
+leaves the rest of it alone. Any other value, including a list, replaces what
+it overrides entirely.
 
-##### varDirs
+##### Merge from multiple files and directories
 
-TODO: example showing varDirs
+[include:dirs]
+
+##### Value directories
+
+[include:valuedirs]
 
 ##### Environment variables, system props, and args
 
-TODO an example showing how to override with these
+[include:overrides]
 
 #### Show where your app got your config from
 
-TODO example showing origins, emphasis on tracking origin as well as secret values hidden
+[include:origins]
 
 ### Mapping to scala case class
 
 #### Readers
 
-TODO: example showing common reader types, primitives and composite
-TODO: example describing built-in case class and union type readers
-TODO: example showing how to build a custom reader
+[include:readers]
+
+#### Deriving readers for your own types
+
+[include:derivation]
+
+#### Writing your own reader
+
+[include:customreaders]
 
 #### Errors and warnings
 
-TODO example showing errors (e.g. missing field), as well as warnings (e.g. unknown field).
+[include:errors]
 
 #### Config traits
 
-TODO: mention that autoset uses a "config trait" pattern, where implicit readers are looked up based on path and settings
-also. Then showcase this pattern with two examples:
+Readers are not global givens: they are members of an object, and the macro
+which derives a reader looks them up on the object it was called on. The same
+object carries the settings which decide how Scala names are spelled in config
+files. Deriving and reading through your own such object — a *config trait* —
+therefore gives you one place to define both.
 
-- TODO: example showing how to define readers in an object extends Api, and relying on the path-dependent implicit lookup
+##### Readers for types you don't own
 
-- TODO: example showing how to override common settings such as mapping field names to snake_case and changing the descriminator
+[include:configtraits]
+
+##### Settings
+
+[include:settings]

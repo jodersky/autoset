@@ -1,0 +1,12 @@
+server:
+  host: 0.0.0.0
+  db_url: jdbc:postgresql://localhost/example
+
+storage:
+  type: disk
+  path: /var/lib/example
+
+cache: memory
+
+level: info
+mode: strict

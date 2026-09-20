@@ -1,0 +1,24 @@
+# primitives
+name: example
+port: 8080
+ratio: 0.75
+debug: true
+
+# common standard library types
+id: 123e4567-e89b-12d3-a456-426614174000
+url: https://example.com/api
+addr: "localhost:9090"
+timeout: 30 seconds
+retention: P30D
+startsAt: "04:30"
+zone: Europe/Zurich
+logFile: log/example.log
+pattern: "^[a-z]+$"
+workers: 1 to 8
+
+# collections
+hosts: [a.example.com, b.example.com]
+weights:
+  a: 0.5
+  b: 1.5
+tags: [red, green, red]
