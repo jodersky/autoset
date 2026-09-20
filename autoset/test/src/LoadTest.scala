@@ -401,7 +401,7 @@ object LoadTest extends TestSuite:
       ).get
 
       def resolve(value: Value) =
-        autoset.default.OsPathReader.read(value, Vector.empty, Reporter()).get
+        autoset.default.OsPathReader.read(value, None, Context(Reporter())).get
       assert(resolve(result.fields("data")) == dir / "conf" / "db")
       val logs = result.fields("nested").asInstanceOf[Obj].fields("logs").asInstanceOf[Arr].values.head
       assert(resolve(logs) == dir / "logs")

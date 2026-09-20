@@ -77,7 +77,10 @@ object Value:
 
   private def dominant(vs: Iterable[Value]): Option[String] =
     val srcs = vs.flatMap(mainSource).toSeq
-    srcs.distinct.maxByOption(s => srcs.count(_ == s))
+    // defaults a reader filled in are the exception worth pointing at, so they
+    // only label a container when everything in it is a default
+    val sources = if srcs.forall(_ == "default") then srcs else srcs.filter(_ != "default")
+    sources.distinct.maxByOption(s => sources.count(_ == s))
 
   private def describe(origins: List[Origin]): String =
     val overrides =
@@ -211,7 +214,9 @@ enum Origin:
   case Props(name: String)
   case Arg(name: String)
   case Code(path: String, idx: Int, line: Int, col: Int) // set un user code
-  case Default // from the case class parameter
+  // supplied by a reader rather than read from a source: the default of a case
+  // class field, or `None` for an absent `Option`
+  case Default
 
   def pretty: String = this match
     case File(path, _, line, col, _) => Origin.location(path, line, col)

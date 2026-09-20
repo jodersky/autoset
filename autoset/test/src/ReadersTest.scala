@@ -15,7 +15,7 @@ object ReadersTest extends TestSuite:
   def read[A](value: Value)(using reader: Reader[A]): (Option[A], String) =
     val out = java.io.ByteArrayOutputStream()
     val reporter = Reporter.printing(java.io.PrintStream(out))
-    val result = reader.read(value, Vector("a", "b"), reporter)
+    val result = reader.read(value, None, Context(Vector("a", "b"), reporter))
     assert(result.isEmpty == reporter.hasErrors)
     (result, out.toString)
 
@@ -66,7 +66,7 @@ object ReadersTest extends TestSuite:
     }
     test("root path") {
       val out = java.io.ByteArrayOutputStream()
-      readers.IntReader.read(str("x", env("X")), Vector.empty, Reporter.printing(java.io.PrintStream(out)))
+      readers.IntReader.read(str("x", env("X")), None, Context(Reporter.printing(java.io.PrintStream(out))))
       assert(out.toString == "error: env X: expected an integer, found 'x'\n")
     }
     test("string") {
@@ -238,7 +238,7 @@ object ReadersTest extends TestSuite:
         val out = java.io.ByteArrayOutputStream()
         val value = Str(raw, LitKind.Unknown, List(env("APP_X")))
         if secret then value.markSecret()
-        val result = reader.read(value, Vector("a", "b"), Reporter.printing(java.io.PrintStream(out)))
+        val result = reader.read(value, None, Context(Vector("a", "b"), Reporter.printing(java.io.PrintStream(out))))
         (result, out.toString)
 
       assert(split[List[String]]("a, b ,c")._1 == Some(List("a", "b", "c")))
@@ -376,8 +376,8 @@ object ReadersTest extends TestSuite:
         val out = java.io.ByteArrayOutputStream()
         val result = readers.OsPathReader.read(
           Str(raw, LitKind.String, List(origin)),
-          Vector("a", "b"),
-          Reporter.printing(java.io.PrintStream(out))
+          None,
+          Context(Vector("a", "b"), Reporter.printing(java.io.PrintStream(out)))
         )
         (result, out.toString)
 
@@ -397,7 +397,7 @@ object ReadersTest extends TestSuite:
 
       // java paths are resolved in the same way
       val nio = readers.NioPathReader
-        .read(Str("x", LitKind.String, List(conf)), Vector.empty, Reporter())
+        .read(Str("x", LitKind.String, List(conf)), None, Context(Reporter()))
       assert(nio.get == (os.pwd / "conf" / "x").toNIO)
     }
     test("overridden path root") {
@@ -405,8 +405,8 @@ object ReadersTest extends TestSuite:
         override def pathRoot(origin: Origin) = os.root / "etc" / "app"
       val result = etcReaders.OsPathReader.read(
         Str("certs/key.pem", LitKind.String, List(Origin.File("conf/app.yaml", 0, 1, 1))),
-        Vector.empty,
-        Reporter()
+        None,
+        Context(Reporter())
       )
       assert(result.get == os.root / "etc" / "app" / "certs" / "key.pem")
     }

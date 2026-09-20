@@ -15,7 +15,8 @@ object ReadTest extends TestSuite:
       paths: Seq[String],
       env: Map[String, String] = Map(),
       args: Seq[Arg] = Seq(),
-      valueDirs: Seq[String] = Seq()
+      valueDirs: Seq[String] = Seq(),
+      base: Option[A] = None
   ): (Option[(A, Obj)], String, os.Path) =
     val dir = os.temp.dir()
     for (name, content) <- files do os.write(dir / os.RelPath(name), content, createFolders = true)
@@ -28,6 +29,7 @@ object ReadTest extends TestSuite:
       envPrefix = "APP_",
       props = Map(),
       args = args,
+      base = base,
       reporter = reporter
     )
     assert(result.isEmpty == reporter.hasErrors)
@@ -132,6 +134,43 @@ object ReadTest extends TestSuite:
             |error: missing required field 'data'
             |""".stripMargin
       )
+    }
+    test("the config shows the defaults that were used") {
+      val (result, out, dir) = read[ReadApp](
+        Seq("app.json" -> """{"name": "app", "data": "d", "db": {"host": "h", "password": "p"}}"""),
+        Seq("app.json")
+      )
+      val (app, config) = result.get
+      assert(app.db.port == 5432)
+      assert(out == "")
+      // `db.port` was not set anywhere, so the reader recorded what it used
+      assert(
+        config.pretty() ==
+          """{ // app.json
+            |  name: "app",
+            |  data: "d",
+            |  db: {
+            |    host: "h",
+            |    password: <secret>,
+            |    port: "5432" // default
+            |  }
+            |}""".stripMargin
+      )
+      // and reading the same config again gives the same result, rather than
+      // parsing the recorded value back
+      val reporter = Reporter()
+      assert(autoset.project[ReadApp](config, reporter) == Some(app))
+      assert(reporter.render == "")
+    }
+    test("a base gives defaults at run time") {
+      // defaults which are only known at run time, overriding the field's own
+      val files = Seq("app.json" -> """{"name": "app", "data": "d", "db": {"host": "h"}}""")
+      val base = ReadApp("base", ReadDb("base-host", 1234, "hunter2"), os.pwd)
+      val (result, out, dir) = read[ReadApp](files, Seq("app.json"), base = Some(base))
+      val (app, config) = result.get
+      assert(app == ReadApp("app", ReadDb("h", 1234, "hunter2"), dir / "d"))
+      assert(out == "")
+      assert(config.fields("db").asInstanceOf[Obj].fields("port").origins == List(Origin.Default))
     }
     test("secret errors") {
       case class Port(@secret port: Int) derives autoset.Reader

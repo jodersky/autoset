@@ -1,8 +1,19 @@
-address: q
-port: 2
+main:
+  listeners:
+    - scheme: http
+      port: 80
+    - scheme: https
+      port: 443
+
+metrics:
+  listeners:
+    - scheme: http
+      port: 80
+
 db:
   type: postgres
-  # file: a
-  uri: http://f
-  password: foo
+  uri: jdbc:postgresql://host:port/database
+  # The password will be injected from another file
+  #password:
 
+root: extra

@@ -34,12 +34,18 @@ trait DerivedReaders extends ReadersApi:
     *   - A case class. The reader expects an object, and reads each field with
     *     the reader for its type, which must be available as a given (except
     *     for unions of string literals, whose reader is derived). A field
-    *     that is missing from the object takes its default value if it has
-    *     one, is `None` if it is an `Option`, and is an error otherwise. Keys
-    *     of the object that don't match any field are warned about, and
-    *     marked as unknown. The values of fields annotated with `@secret` are
-    *     marked as secret, so that they are never shown, e.g. by `pretty` or
-    *     in errors.
+    *     that is missing from the object takes the value of that field in the
+    *     `base` it is read with, else its default value if it has one, else
+    *     `None` if it is an `Option`, and is an error otherwise. A value
+    *     which no source provided is recorded in the object, so that it shows
+    *     the configuration which was used; it has the `Origin.Default`
+    *     origin, which readers treat as absent. An object which is only
+    *     partly set is read with the value it would have taken as its base,
+    *     so that it inherits the rest of its fields instead of reporting them
+    *     missing. Keys of the object that don't match any field are warned
+    *     about, and marked as unknown. The values of fields annotated with
+    *     `@secret` are marked as secret, so that they are never shown, e.g.
+    *     by `pretty` or in errors.
     *
     *   - A sealed trait or enum, whose cases are case classes or singletons
     *     (case objects or enum cases without parameters). The reader expects
@@ -99,39 +105,45 @@ object DerivedReaders:
     *
     * the generated reader is equivalent to:
     * ```scala
-    * new api.Reader[Foo]:
-    *   def read(value: Value, path: Vector[String], reporter: Reporter) =
+    * api.readerFrom[Foo](
+    *   (value, base, ctx) =>
     *     value match
     *       case obj: Obj =>
     *         var ok = true
     *
     *         val nameA = api.fieldName("a")
     *         var a: Int = 0
-    *         obj.fields.get(nameA) match
+    *         // the field of the base, else the field's own default, if any
+    *         lazy val defaultA: Option[Int] = base.map(_.a)
+    *         ReaderUtils.field(obj, nameA) match
     *           case Some(v) =>
-    *             summon[api.Reader[Int]].read(v, path :+ nameA, reporter) match
+    *             summon[api.Reader[Int]].read(v, defaultA, ctx / nameA) match
     *               case Some(x) => a = x
     *               case None => ok = false
     *           case None =>
-    *             ReaderUtils.missingField(obj, path :+ nameA, reporter)
-    *             ok = false
+    *             defaultA match
+    *               case Some(x) =>
+    *                 a = x
+    *                 api.recordDefault(obj, nameA, summon[api.Reader[Int]], x, false)
+    *               case None =>
+    *                 ReaderUtils.missingField(obj, ctx / nameA)
+    *                 ok = false
     *
     *         val nameB = api.fieldName("b")
     *         var b: String = null
-    *         obj.fields.get(nameB) match
-    *           case Some(v) =>
-    *             v.markSecret() // before reading, so that errors don't show it
-    *             summon[api.Reader[String]].read(v, path :+ nameB, reporter) match
-    *               case Some(x) => b = x
-    *               case None => ok = false
-    *           case None => b = Foo.$lessinit$greater$default$2
+    *         lazy val defaultB: Option[String] =
+    *           base.map(_.b).orElse(Some(Foo.$lessinit$greater$default$2))
+    *         ... // as above, marking `v` secret before reading it
     *
     *         for (key, v) <- obj.fields if !List(nameA, nameB).contains(key) do
     *           v.unknown = true
-    *           reporter.warn("unknown key '" + ... + "'", v.effectiveOrigin)
+    *           ctx.reporter.warn("unknown key '" + ... + "'", v.effectiveOrigin)
     *
     *         if ok then Some(new Foo(a, b)) else None
-    *       case _ => ReaderUtils.mismatch("an object", value, path, reporter)
+    *       case _ => ReaderUtils.mismatch("an object", value, ctx),
+    *   // `show`, used to record a value which no source provided
+    *   foo => Some(Obj(m.LinkedHashMap(nameA -> ..., nameB -> ...), Nil))
+    * )
     * ```
     *
     * For a sealed type with cases `Foo` and `Bar`, the reader looks up the
@@ -167,10 +179,14 @@ object DerivedReaders:
     case class FieldInfo(
         name: String,
         tpe: TypeRepr,
+        accessor: Symbol,
         reader: Term,
         default: Option[Term],
         annotations: List[Term]
     ):
+      /** Whether the field is an `Option`, which is `None` when missing. */
+      def isOption: Boolean = tpe.typeSymbol == TypeRepr.of[Option[Any]].typeSymbol
+
       /** The annotations of type `T`. */
       def annotated[T: Type]: List[Term] = annotations.filter(_.tpe <:< TypeRepr.of[T])
 
@@ -247,7 +263,7 @@ object DerivedReaders:
           if method.paramSymss.isEmpty then call else call.appliedToTypes(cls.typeArgs)
         }
 
-        FieldInfo(param.name, fieldTpe, reader, default, param.annotations)
+        FieldInfo(param.name, fieldTpe, field, reader, default, param.annotations)
 
       // keys given literally must not clash; others depend on `fieldName`
       val literal = fields.flatMap(f => f.key.toList ++ f.deprecated)
@@ -262,32 +278,64 @@ object DerivedReaders:
     def warnUnknown(
         obj: Expr[Obj],
         known: Expr[String => Boolean],
-        path: Expr[Vector[String]],
-        reporter: Expr[Reporter]
+        ctx: Expr[Context]
     )(using Quotes): Expr[Unit] =
       '{
         for (key, v) <- $obj.fields if !$known(key) do
           v.unknown = true
-          $reporter.warn(s"unknown key '${($path :+ key).mkString(".")}'", v.effectiveOrigin)
+          $ctx.reporter.warn(s"unknown key '${($ctx / key).show}'", v.effectiveOrigin)
       }
+
+    /** Call `api.showValue(reader, a)`, rendering `a` as configuration. */
+    def showValue[T: Type](field: FieldInfo, a: Expr[T])(using Quotes): Expr[Value] =
+      Select
+        .unique(api.asTerm, "showValue")
+        .appliedToTypes(List(TypeRepr.of[T]))
+        .appliedToArgs(List(field.reader, a.asTerm))
+        .asExprOf[Value]
+
+    /** Call `api.recordDefault(obj, key, reader, a, secret)`, so that the
+      * configuration shows a value which no source provided.
+      */
+    def recordDefault[T: Type](
+        field: FieldInfo,
+        obj: Expr[Obj],
+        key: Expr[String],
+        a: Expr[T],
+        secret: Boolean
+    )(using Quotes): Expr[Unit] =
+      Select
+        .unique(api.asTerm, "recordDefault")
+        .appliedToTypes(List(TypeRepr.of[T]))
+        .appliedToArgs(
+          List(obj.asTerm, key.asTerm, field.reader, a.asTerm, Literal(BooleanConstant(secret)))
+        )
+        .asExprOf[Unit]
 
     // The helpers below take their own `Quotes`, so that the expressions they
     // create belong to the splice they are called in.
 
-    /** Read the field at key `name` into `x`, recording whether it failed. */
+    /** Read the field at key `name` into `x`, recording whether it failed.
+      *
+      * @param fallback
+      *   what the field takes if no source set it: the value from the base of
+      *   the object being read, else the field's own default. It is also the
+      *   base of the field's own value, so that an object which only sets
+      *   some of its keys inherits the rest.
+      */
     def readField[T: Type](
         field: FieldInfo,
         name: Expr[String],
         x: Expr[T],
         obj: Expr[Obj],
         ok: Expr[Boolean],
-        path: Expr[Vector[String]],
-        reporter: Expr[Reporter]
+        fallback: Expr[Option[T]],
+        ctx: Expr[Context]
     )(using Quotes): Expr[Unit] =
       def fail = assign(ok, Literal(BooleanConstant(false)))
       val secret = field.has[autoset.secret]
       val lookup: Expr[Option[(String, Value)]] =
-        if field.deprecated.isEmpty then '{ $obj.fields.get($name).map(v => ($name, v)) }
+        if field.deprecated.isEmpty then '{ ReaderUtils.field($obj, $name).map(v => ($name, v)) }
         else
           '{
             ReaderUtils.lookupField(
@@ -295,11 +343,12 @@ object DerivedReaders:
               $name,
               ${ Expr(field.deprecated) },
               ${ Expr(secret) },
-              $path,
-              $reporter
+              $ctx
             )
           }
       '{
+        // lazy, so that a default is evaluated at most once
+        lazy val default: Option[T] = $fallback
         $lookup match
           case Some((key, v)) =>
             // before reading, so that errors don't show it
@@ -307,23 +356,20 @@ object DerivedReaders:
             ${
               Select
                 .unique(field.reader, "read")
-                .appliedToArgs(List('v.asTerm, '{ $path :+ key }.asTerm, reporter.asTerm))
+                .appliedToArgs(List('v.asTerm, 'default.asTerm, '{ $ctx / key }.asTerm))
                 .asExprOf[Option[T]]
             } match
               case Some(a) => ${ assign(x, 'a.asTerm) }
               case None => $fail
           case None =>
-            ${
-              field.default match
-                case Some(default) => assign(x, default)
-                case None if field.tpe.typeSymbol == TypeRepr.of[Option[Any]].typeSymbol =>
-                  assign(x, '{ None }.asTerm)
-                case None =>
-                  '{
-                    ReaderUtils.missingField($obj, $path :+ $name, $reporter)
-                    $fail
-                  }
-            }
+            default match
+              case Some(a) =>
+                ${ assign(x, 'a.asTerm) }
+                // show what was used, since no source provided it
+                ${ recordDefault[T](field, obj, name, 'a, secret) }
+              case None =>
+                ReaderUtils.missingField($obj, $ctx / $name)
+                $fail
       }
 
     /** Read `obj` as the case class `T`.
@@ -335,11 +381,27 @@ object DerivedReaders:
     def readCaseClass[T: Type](
         obj: Expr[Obj],
         tag: Option[Expr[String]],
-        path: Expr[Vector[String]],
-        reporter: Expr[Reporter]
+        base: Expr[Option[T]],
+        ctx: Expr[Context]
     )(using Quotes): Expr[Option[T]] =
       val cls = TypeRepr.of[T]
       val fields = fieldsOf(cls)
+
+      /** What a field takes if no source set it: the field of `base`, else the
+        * field's own default, else nothing (`None` for an `Option`).
+        *
+        * This is also passed as the base of the field's own value, so a field
+        * with a default has it evaluated even when a source set the field.
+        */
+      def fallbackOf[F: Type](field: FieldInfo)(using Quotes): Expr[Option[F]] =
+        val fromBase = '{
+          $base.map(b => ${ Select('b.asTerm, field.accessor).asExprOf[F] })
+        }
+        val own: Expr[Option[F]] = field.default match
+          case Some(default) => '{ Some(${ default.asExprOf[F] }) }
+          case None if field.isOption => '{ Some(None) }.asExprOf[Option[F]]
+          case None => '{ None }
+        '{ $fromBase.orElse($own) }
 
       /** Declare a variable for each field from the `i`th on and read it, then
         * construct the case class from the variables.
@@ -362,7 +424,7 @@ object DerivedReaders:
               '{
                 val name = ${ field.key.fold('{ $api.fieldName(${ Expr(field.name) }) })(Expr(_)) }
                 var x: t = null.asInstanceOf[t]
-                ${ readField[t](field, 'name, 'x, obj, ok, path, reporter) }
+                ${ readField[t](field, 'name, 'x, obj, ok, fallbackOf[t](field), ctx) }
                 ${ readFields(i + 1, 'x.asTerm :: vars, 'name :: nameExprs, ok) }
               }
         else
@@ -377,7 +439,7 @@ object DerivedReaders:
               val isTag: Expr[String => Boolean] = tag match
                 case Some(t) => '{ (key: String) => key == $t }
                 case None => '{ (_: String) => false }
-              warnUnknown(obj, '{ key => names.contains(key) || $isTag(key) }, path, reporter)
+              warnUnknown(obj, '{ key => names.contains(key) || $isTag(key) }, ctx)
             }
             if $ok then Some($construct) else None
           }
@@ -386,6 +448,23 @@ object DerivedReaders:
         var ok = true
         ${ readFields(0, Nil, Nil, 'ok) }
       }
+
+    /** Render `a` as a config object, with the discriminator if `tag` is set. */
+    def showCaseClass[T: Type](a: Expr[T], tag: Option[Expr[String]])(using
+        Quotes
+    ): Expr[Value] =
+      val fields = fieldsOf(TypeRepr.of[T])
+      val entries = fields.map { field =>
+        field.tpe.asType match
+          case '[t] =>
+            val key = field.key.fold('{ $api.fieldName(${ Expr(field.name) }) })(Expr(_))
+            val value = showValue[t](field, Select(a.asTerm, field.accessor).asExprOf[t])
+            '{ ($key, $value) }
+      }
+      val discriminator = tag.toList.map { name =>
+        '{ ($api.discriminator, Str($name, LitKind.String, Nil): Value) }
+      }
+      '{ Obj(m.LinkedHashMap(${ Expr.ofList(discriminator ++ entries) }*), Nil) }
 
     /** A case of a sealed type: a case class, or a singleton if `singleton`. */
     case class Case(name: String, sym: Symbol, singleton: Boolean)
@@ -403,8 +482,8 @@ object DerivedReaders:
 
     def readSum(
         value: Expr[Value],
-        path: Expr[Vector[String]],
-        reporter: Expr[Reporter]
+        base: Expr[Option[A]],
+        ctx: Expr[Context]
     )(using Quotes): Expr[Option[A]] =
       if tpe.typeArgs.nonEmpty then fail("since generic sealed types are not supported")
       val cases = casesOf(tpe.typeSymbol)
@@ -424,22 +503,29 @@ object DerivedReaders:
           expected: Expr[String],
           disc: Expr[String],
           tagValue: Expr[Value],
-          tagPath: Expr[Vector[String]],
+          tagCtx: Expr[Context],
           obj: Expr[Obj]
       )(using Quotes): Expr[Option[A]] =
         cases.zipWithIndex.foldRight(
-          '{ ReaderUtils.mismatch($expected, $tagValue, $tagPath, $reporter) }
+          '{ ReaderUtils.mismatch($expected, $tagValue, $tagCtx) }
         ) { case ((c, i), otherwise) =>
           val read: Expr[Option[A]] =
             if c.singleton then
               '{
-                ${ warnUnknown(obj, '{ _ == $disc }, path, reporter) }
+                ${ warnUnknown(obj, '{ _ == $disc }, ctx) }
                 Some(${ Ref(c.sym).asExprOf[A] })
               }
             else
               c.sym.typeRef.asType match
                 case '[t] =>
-                  readCaseClass[t](obj, Some(disc), path, reporter).asExprOf[Option[A]]
+                  // the base only applies if the config selects the same case
+                  val caseBase = '{
+                    $base.flatMap {
+                      case b: t => Some(b)
+                      case _ => None
+                    }
+                  }
+                  readCaseClass[t](obj, Some(disc), caseBase, ctx).asExprOf[Option[A]]
           '{ if $name == $names(${ Expr(i) }) then $read else $otherwise }
         }
 
@@ -451,20 +537,41 @@ object DerivedReaders:
           case str @ Str(raw, _, origins) =>
             // short for an object with only the discriminator
             val obj = Obj(m.LinkedHashMap(disc -> str), origins)
-            ${ dispatch('{ raw.trim }, 'names, 'expected, 'disc, 'str, path, 'obj) }
+            ${ dispatch('{ raw.trim }, 'names, 'expected, 'disc, 'str, ctx, 'obj) }
           case obj: Obj =>
-            obj.fields.get(disc) match
+            ReaderUtils.field(obj, disc) match
               case Some(tag @ Str(raw, _, _)) =>
-                ${ dispatch('{ raw.trim }, 'names, 'expected, 'disc, 'tag, '{ $path :+ disc }, 'obj) }
-              case Some(other) => ReaderUtils.mismatch(expected, other, $path :+ disc, $reporter)
-              case None => ReaderUtils.missingField(obj, $path :+ disc, $reporter)
+                ${ dispatch('{ raw.trim }, 'names, 'expected, 'disc, 'tag, '{ $ctx / disc }, 'obj) }
+              case Some(other) => ReaderUtils.mismatch(expected, other, $ctx / disc)
+              case None => ReaderUtils.missingField(obj, $ctx / disc)
           case _ =>
             ReaderUtils.mismatch(
               ${ if allSingletons then 'expected else '{ "an object" } },
               $value,
-              $path,
-              $reporter
+              $ctx
             )
+      }
+
+    /** Render `a` as its case's config: an object with the discriminator, or
+      * just the name of the case for a singleton.
+      */
+    def showSum(a: Expr[A])(using Quotes): Expr[Value] =
+      val cases = casesOf(tpe.typeSymbol)
+      cases.foldRight('{ Str(String.valueOf($a), LitKind.Unknown, Nil): Value }) { (c, otherwise) =>
+        val name = '{ $api.caseName(${ Expr(c.name) }) }
+        if c.singleton then
+          '{
+            if $a == ${ Ref(c.sym).asExprOf[Any] } then Str($name, LitKind.String, Nil): Value
+            else $otherwise
+          }
+        else
+          c.sym.typeRef.asType match
+            case '[t] =>
+              '{
+                $a match
+                  case x: t => ${ showCaseClass[t]('x, Some(name)) }
+                  case _ => $otherwise
+              }
       }
 
     /** The strings of a union of string literal types, if `t` is one. */
@@ -476,56 +583,81 @@ object DerivedReaders:
     def readLiterals(
         strings: List[String],
         value: Expr[Value],
-        path: Expr[Vector[String]],
-        reporter: Expr[Reporter]
+        ctx: Expr[Context]
     )(using Quotes): Expr[Option[A]] =
       val expected = strings.distinct.map(s => s"'$s'").mkString("one of ", ", ", "")
       '{
         $value match
           case Str(raw, _, _) if ${ Expr(strings) }.contains(raw.trim) =>
             Some(raw.trim.asInstanceOf[A])
-          case _ => ReaderUtils.mismatch(${ Expr(expected) }, $value, $path, $reporter)
+          case _ => ReaderUtils.mismatch(${ Expr(expected) }, $value, $ctx)
       }
 
-    def body(
+    def readBody(
         value: Expr[Value],
-        path: Expr[Vector[String]],
-        reporter: Expr[Reporter]
+        base: Expr[Option[A]],
+        ctx: Expr[Context]
     )(using Quotes): Expr[Option[A]] =
       val sym = tpe.typeSymbol
       literals(tpe) match
-        case Some(strings) => readLiterals(strings, value, path, reporter)
+        case Some(strings) => readLiterals(strings, value, ctx)
         case None if isCaseClass(sym) =>
           '{
             $value match
-              case obj: Obj => ${ readCaseClass[A]('obj, None, path, reporter) }
-              case _ => ReaderUtils.mismatch("an object", $value, $path, $reporter)
+              case obj: Obj => ${ readCaseClass[A]('obj, None, base, ctx) }
+              case _ => ReaderUtils.mismatch("an object", $value, $ctx)
           }
-        case None if sym.flags.is(Flags.Sealed) => readSum(value, path, reporter)
+        case None if sym.flags.is(Flags.Sealed) => readSum(value, base, ctx)
         case None =>
           fail("which is not a case class, sealed type, enum or union of string literals")
 
-    // `Reader` has a single abstract method, so the reader is a closure of
-    // `read`, typed as `api.Reader[A]` (like `Lambda`, but for a SAM type)
-    val readSym = Symbol.newMethod(
-      Symbol.spliceOwner,
-      "$anonfun",
-      MethodType(List("value", "path", "reporter"))(
-        _ => List(TypeRepr.of[Value], TypeRepr.of[Vector[String]], TypeRepr.of[Reporter]),
-        _ => TypeRepr.of[Option[A]]
+    /** Render an `A` as the configuration it would be read from, so that
+      * values which no source provided can be shown.
+      */
+    def showBody(a: Expr[A])(using Quotes): Expr[Option[Value]] =
+      val sym = tpe.typeSymbol
+      literals(tpe) match
+        case Some(_) => '{ Some(Str(String.valueOf($a), LitKind.String, Nil)) }
+        case None if isCaseClass(sym) => '{ Some(${ showCaseClass[A](a, None) }) }
+        case None if sym.flags.is(Flags.Sealed) => '{ Some(${ showSum(a) }) }
+        case None => '{ None }
+
+    /** A closure of `f`, whose parameters are `names` of types `params`. */
+    def closure(names: List[String], params: List[TypeRepr], result: TypeRepr, tpe: TypeRepr)(
+        f: List[Term] => Expr[Any]
+    ): Term =
+      val sym = Symbol.newMethod(
+        Symbol.spliceOwner,
+        "$anonfun",
+        MethodType(names)(_ => params, _ => result)
       )
-    )
-    val readDef = DefDef(
-      readSym,
-      {
-        case List(List(value: Term, path: Term, reporter: Term)) =>
-          val rhs = body(
-            value.asExprOf[Value],
-            path.asExprOf[Vector[String]],
-            reporter.asExprOf[Reporter]
-          )
-          Some(rhs.asTerm.changeOwner(readSym))
-        case _ => None
-      }
-    )
-    Block(List(readDef), Closure(Ref(readSym), Some(readerOf(tpe)))).asExprOf[R]
+      val definition = DefDef(
+        sym,
+        {
+          case List(args) => Some(f(args.map(_.asInstanceOf[Term])).asTerm.changeOwner(sym))
+          case _ => None
+        }
+      )
+      Block(List(definition), Closure(Ref(sym), Some(tpe)))
+
+    val read = closure(
+      List("value", "base", "ctx"),
+      List(TypeRepr.of[Value], TypeRepr.of[Option[A]], TypeRepr.of[Context]),
+      TypeRepr.of[Option[A]],
+      TypeRepr.of[(Value, Option[A], Context) => Option[A]]
+    ) { case List(value, base, ctx) =>
+      readBody(value.asExprOf[Value], base.asExprOf[Option[A]], ctx.asExprOf[Context])
+    }
+
+    val show = closure(
+      List("a"),
+      List(tpe),
+      TypeRepr.of[Option[Value]],
+      TypeRepr.of[A => Option[Value]]
+    ) { case List(a) => showBody(a.asExprOf[A]) }
+
+    Select
+      .unique(api.asTerm, "readerFrom")
+      .appliedToTypes(List(tpe))
+      .appliedToArgs(List(read, show))
+      .asExprOf[R]

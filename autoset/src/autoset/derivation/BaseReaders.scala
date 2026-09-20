@@ -9,54 +9,62 @@ import ReaderUtils.mismatch
 trait BaseReaders extends ReadersApi:
 
   given ValueReader: Reader[Value] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) = Some(value)
+    def read(value: Value, base: Option[Value], ctx: Context) = Some(value)
+    override def show(a: Value) = Some(a)
 
   given ObjReader: Reader[Obj] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: Obj) = Some(a)
+    def read(value: Value, base: Option[Obj], ctx: Context) =
       value match
         case o: Obj => Some(o)
-        case _ => mismatch("an object", value, path, reporter)
+        case _ => mismatch("an object", value, ctx)
 
   given ArrReader: Reader[Arr] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: Arr) = Some(a)
+    def read(value: Value, base: Option[Arr], ctx: Context) =
       value match
         case a: Arr => Some(a)
-        case _ => mismatch("an array", value, path, reporter)
+        case _ => mismatch("an array", value, ctx)
 
   given StrReader: Reader[Str] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: Str) = Some(a)
+    def read(value: Value, base: Option[Str], ctx: Context) =
       value match
         case s: Str => Some(s)
-        case _ => mismatch("a string", value, path, reporter)
+        case _ => mismatch("a string", value, ctx)
 
   given NullReader: Reader[Null] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: Null) = Some(a)
+    def read(value: Value, base: Option[Null], ctx: Context) =
       value match
         case n: Null => Some(n)
-        case _ => mismatch("null", value, path, reporter)
+        case _ => mismatch("null", value, ctx)
 
   given StringReader: Reader[String] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: String) = Some(Str(a, LitKind.String, Nil))
+    def read(value: Value, base: Option[String], ctx: Context) =
       value match
         case Str(raw, _, _) => Some(raw)
-        case _ => mismatch("a string", value, path, reporter)
+        case _ => mismatch("a string", value, ctx)
 
   /** A reader for strings that parse as `A`. `parse` returns `Left` with a
     * description of what was expected if the string is invalid.
     */
-  protected class ParsedReader[A](expected: String)(parse: String => Either[String, A])
-      extends Reader[A]:
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+  protected class ParsedReader[A](expected: String, kind: LitKind = LitKind.String)(
+      parse: String => Either[String, A]
+  ) extends Reader[A]:
+    override def show(a: A) = Some(Str(String.valueOf(a), kind, Nil))
+    def read(value: Value, base: Option[A], ctx: Context) =
       value match
         case Str(raw, _, _) =>
           parse(raw) match
             case Right(a) => Some(a)
-            case Left(exp) => mismatch(exp, value, path, reporter)
-        case _ => mismatch(expected, value, path, reporter)
+            case Left(exp) => mismatch(exp, value, ctx)
+        case _ => mismatch(expected, value, ctx)
 
   /** A reader for integral numbers, reporting when a number is out of range. */
   protected def integral[A](min: A, max: A)(parse: String => Option[A]): Reader[A] =
-    ParsedReader("an integer") { raw =>
+    ParsedReader("an integer", LitKind.Num) { raw =>
       val s = raw.trim
       parse(s) match
         case Some(a) => Right(a)
@@ -66,7 +74,7 @@ trait BaseReaders extends ReadersApi:
 
   /** A reader for floating point numbers, reporting when a number overflows. */
   protected def fractional[A](parse: String => Option[A])(isInfinite: A => Boolean): Reader[A] =
-    ParsedReader("a number") { raw =>
+    ParsedReader("a number", LitKind.Num) { raw =>
       val s = raw.trim
       // Java accepts type suffixes such as `1d` or `1f`, which aren't numbers in config files
       val suffixed = s.nonEmpty && "dDfF".contains(s.last)
@@ -77,7 +85,7 @@ trait BaseReaders extends ReadersApi:
         case None => Left("a number")
     }
 
-  given BooleanReader: Reader[Boolean] = ParsedReader("a boolean") { raw =>
+  given BooleanReader: Reader[Boolean] = ParsedReader("a boolean", LitKind.Bool) { raw =>
     raw.trim.toLowerCase match
       case "true" => Right(true)
       case "false" => Right(false)
@@ -99,8 +107,10 @@ trait BaseReaders extends ReadersApi:
   /** A reader for strings that `parse` accepts, where `parse` throws on
     * invalid input.
     */
-  protected def parsing[A](expected: String)(parse: String => A): Reader[A] =
-    ParsedReader(expected) { raw =>
+  protected def parsing[A](expected: String, kind: LitKind = LitKind.String)(
+      parse: String => A
+  ): Reader[A] =
+    ParsedReader(expected, kind) { raw =>
       try Right(parse(raw.trim))
       catch case scala.util.control.NonFatal(_) => Left(expected)
     }
@@ -169,9 +179,9 @@ trait BaseReaders extends ReadersApi:
       if s.matches(canonical) then Right(java.util.UUID.fromString(s)) else Left(expected)
     }
 
-  given BigIntReader: Reader[BigInt] = parsing("an integer")(BigInt(_))
+  given BigIntReader: Reader[BigInt] = parsing("an integer", LitKind.Num)(BigInt(_))
 
-  given BigDecimalReader: Reader[BigDecimal] = parsing("a number")(BigDecimal(_))
+  given BigDecimalReader: Reader[BigDecimal] = parsing("a number", LitKind.Num)(BigDecimal(_))
 
   given URIReader: Reader[java.net.URI] =
     parsing("a URI (e.g. 'https://example.com/path')")(java.net.URI(_))
@@ -259,7 +269,8 @@ trait BaseReaders extends ReadersApi:
     * home directory.
     */
   given OsPathReader: Reader[os.Path] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: os.Path) = Some(Str(a.toString, LitKind.String, Nil))
+    def read(value: Value, base: Option[os.Path], ctx: Context) =
       value match
         case Str(raw, _, _) =>
           val resolved =
@@ -271,9 +282,10 @@ trait BaseReaders extends ReadersApi:
             catch case scala.util.control.NonFatal(_) => None
           resolved match
             case Some(p) => Some(p)
-            case None => mismatch("a path", value, path, reporter)
-        case _ => mismatch("a path", value, path, reporter)
+            case None => mismatch("a path", value, ctx)
+        case _ => mismatch("a path", value, ctx)
 
   given NioPathReader: Reader[java.nio.file.Path] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
-      OsPathReader.read(value, path, reporter).map(_.toNIO)
+    override def show(a: java.nio.file.Path) = Some(Str(a.toString, LitKind.String, Nil))
+    def read(value: Value, base: Option[java.nio.file.Path], ctx: Context) =
+      OsPathReader.read(value, None, ctx).map(_.toNIO)

@@ -158,11 +158,21 @@ object PrettyTest extends TestSuite:
       )
     }
     test("defaults") {
+      // a default a reader filled in is the exception worth pointing at, so it
+      // is annotated even where it is the enclosing object's only other source
       check(
         obj(Origin.Default)("a" -> str("1", Origin.Default), "b" -> str("2", file(1))),
+        """|{ // app.conf
+           |  a: "1", // default
+           |  b: "2"
+           |}"""
+      )
+      // unless everything in it is a default, and the label says it once
+      check(
+        obj(Origin.Default)("a" -> str("1", Origin.Default), "b" -> str("2", Origin.Default)),
         """|{ // default
            |  a: "1",
-           |  b: "2" // app.conf:1:1
+           |  b: "2"
            |}"""
       )
     }

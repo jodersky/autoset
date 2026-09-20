@@ -2,6 +2,7 @@ package autoset.derivation
 
 import autoset.model.*
 import ReaderUtils.mismatch
+import scala.collection.mutable as m
 
 /** Readers for collections, built from the readers of their elements. */
 trait CompositeReaders extends ReadersApi:
@@ -13,10 +14,12 @@ trait CompositeReaders extends ReadersApi:
     * Case class fields of type `Option` are also `None` when missing.
     */
   given OptionReader[A](using elem: Reader[A]): Reader[Option[A]] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: Option[A]) = Some(a.flatMap(elem.show).getOrElse(Null(Nil)))
+    def read(value: Value, base: Option[Option[A]], ctx: Context) =
       value match
         case _: Null => Some(None)
-        case _ => elem.read(value, path, reporter).map(Some(_))
+        // a present value falls back to what the base has inside its option
+        case _ => elem.read(value, base.flatten, ctx).map(Some(_))
 
   /** Reads an array into any iterable collection that has a `Factory`, e.g.
     * `List`, `Vector`, `Set` or `mutable.ArrayBuffer`.
@@ -34,9 +37,13 @@ trait CompositeReaders extends ReadersApi:
       factory: Factory[A, C[A]],
       elem: Reader[A]
   ): Reader[C[A]] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: C[A]) =
+      val items = a.map(elem.show)
+      Option.when(items.forall(_.isDefined))(Arr(items.flatten.to(m.ListBuffer), Nil))
+    // lists are never merged, so a list which is set replaces `base` entirely
+    def read(value: Value, base: Option[C[A]], ctx: Context) =
       value match
-        case arr: Arr => readAll(arr.values, path, reporter)
+        case arr: Arr => readAll(arr.values, ctx)
         case str @ Str(raw, LitKind.Unknown, origins) =>
           val items =
             if raw.trim.isEmpty then Nil
@@ -45,16 +52,11 @@ trait CompositeReaders extends ReadersApi:
                 val s = Str(item.trim, LitKind.Unknown, origins)
                 s.secret = str.secret
                 s
-          readAll(items, path, reporter)
-        case _ => mismatch("an array", value, path, reporter)
+          readAll(items, ctx)
+        case _ => mismatch("an array", value, ctx)
 
-    private def readAll(
-        values: Iterable[Value],
-        path: Vector[String],
-        reporter: Reporter
-    ): Option[C[A]] =
-      val results =
-        values.zipWithIndex.map((v, i) => elem.read(v, path :+ i.toString, reporter))
+    private def readAll(values: Iterable[Value], ctx: Context): Option[C[A]] =
+      val results = values.zipWithIndex.map((v, i) => elem.read(v, None, ctx / i))
       if results.exists(_.isEmpty) then None
       else Some(results.flatten.to(factory))
 
@@ -68,15 +70,23 @@ trait CompositeReaders extends ReadersApi:
       factory: Factory[(String, A), M[String, A]],
       elem: Reader[A]
   ): Reader[M[String, A]] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
+    override def show(a: M[String, A]) =
+      val items = a.toSeq.map((k, v) => k -> elem.show(v))
+      Option.when(items.forall(_._2.isDefined))(
+        Obj(items.map((k, v) => k -> v.get).to(m.LinkedHashMap), Nil)
+      )
+    // a value at a key falls back to the base's value at the same key
+    def read(value: Value, base: Option[M[String, A]], ctx: Context) =
       value match
         case obj: Obj =>
-          val results = obj.fields.toSeq.map((k, v) => k -> elem.read(v, path :+ k, reporter))
+          val results =
+            obj.fields.toSeq.map((k, v) => k -> elem.read(v, base.flatMap(_.get(k)), ctx / k))
           if results.exists(_._2.isEmpty) then None
           else Some(results.map((k, a) => k -> a.get).to(factory))
-        case _ => mismatch("an object", value, path, reporter)
+        case _ => mismatch("an object", value, ctx)
 
   /** Reads an array like any other collection (see `IterableReader`). */
   given ArrayReader[A](using ClassTag[A], Reader[A]): Reader[Array[A]] with
-    def read(value: Value, path: Vector[String], reporter: Reporter) =
-      summon[Reader[Vector[A]]].read(value, path, reporter).map(_.toArray)
+    override def show(a: Array[A]) = summon[Reader[Vector[A]]].show(a.toVector)
+    def read(value: Value, base: Option[Array[A]], ctx: Context) =
+      summon[Reader[Vector[A]]].read(value, base.map(_.toVector), ctx).map(_.toArray)

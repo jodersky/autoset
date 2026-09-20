@@ -6,6 +6,7 @@ import autoset.model.Obj
 import autoset.model.Origin
 import autoset.model.LitKind
 import autoset.model.Str
+import autoset.derivation.ReaderUtils.isDefault
 
 
 trait Api extends autoset.derivation.ReadersApi:
@@ -287,11 +288,18 @@ trait Api extends autoset.derivation.ReadersApi:
     * The parameters are the same as for `load`. Problems from both loading
     * and reading are reported to `reporter`.
     *
+    * @param base
+    *   Values to fall back to for anything the configuration leaves out,
+    *   which take precedence over the defaults of `A`'s fields. This is for
+    *   defaults which are only known at run time; defaults known at compile
+    *   time belong on the fields of `A`.
+    *
     * @return
     *   The config read as an `A`, and the merged configuration it was read
-    *   from, or `None` if any errors were reported. Readers mark parts of the
-    *   merged configuration, e.g. secrets, which are then not shown by its
-    *   `pretty` and `toString`, so it is safe to print for debugging.
+    *   from, or `None` if any errors were reported. Readers fill in the
+    *   values they defaulted to, and mark parts of the merged configuration,
+    *   e.g. secrets, which are then not shown by its `pretty` and `toString`,
+    *   so that it shows the configuration that was used and is safe to print.
     */
   def read[A](
     paths: Iterable[os.FilePath] = Seq(),
@@ -310,6 +318,7 @@ trait Api extends autoset.derivation.ReadersApi:
       collection.mutable.LinkedHashMap.empty,
       List(model.Origin.Default)
     ),
+    base: Option[A] = None,
     reporter: model.Reporter = model.Reporter.printing()
   )(using Reader[A]): Option[(A, model.Obj)] =
     for
@@ -329,7 +338,7 @@ trait Api extends autoset.derivation.ReadersApi:
         init = init,
         reporter = reporter
       )
-      value <- project[A](config, reporter)
+      value <- project[A](config, reporter, base)
     yield (value, config)
 
   /** Record the absolute path of `file` in the origins from it in `value`,
@@ -390,9 +399,11 @@ trait Api extends autoset.derivation.ReadersApi:
       case _: model.Obj => "an object"
       case _: model.Arr => "a list"
       case _ => "a value"
-    // null is a placeholder, so replacing it (or with it) is expected
+    // null is a placeholder, so replacing it (or with it) is expected, and so
+    // is replacing a default a reader recorded, which no source provided
     val structural = (mine, theirs) match
       case (_: model.Null, _) | (_, _: model.Null) => false
+      case _ if isDefault(mine) || isDefault(theirs) => false
       case (_: model.Obj, _) | (_, _: model.Obj) => true
       case _ => false
     if structural then
