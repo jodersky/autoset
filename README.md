@@ -179,6 +179,10 @@ in, and where anything wrong is reported against the origin recorded in the
 first step. The two main sections "Parsing config" and "Mapping to scala case
 classes" below follow those two steps.
 
+> [!NOTE]
+> All examples in this readme are in the `examples/` folder. You can run each
+> with `./mill examples.<name of example>`, for example `./mill examples.demo`.
+
 ### Parsing config
 
 #### Various formats
@@ -1451,6 +1455,20 @@ warning: app.cfg:7:11: unknown key 'storage.bucket'
 Config(Db(32,5 seconds),LocalDisk(/data))
 ```
 
+
+## Building
+
+This project is built with [mill](https://mill-build.org).
+
+Some common tasks are also exposed in the `scripts/` directory, for example
+`./scripts/test` to run all tests.
+
+The library is available for Scala 3 on the JVM and native. It is published to
+maven central:
+
+```scala
+mvn"io.crashbox::autoset::0.1.0"
+```
 
 ## Notice about LLM usage
 
