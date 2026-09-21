@@ -13,6 +13,8 @@ export model.Severity
 export model.Str
 export model.Value
 
+export types.Quantity
+
 export main.Api
 export derivation.ReadersApi
 export derivation.DefaultReaders

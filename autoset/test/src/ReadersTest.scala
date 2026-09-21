@@ -371,6 +371,31 @@ object ReadersTest extends TestSuite:
       val bad = arr(file(1))(str("x", file(1)))
       assert(err[Array[Int]](bad) == "expected an integer for 'a.b.0', found 'x'")
     }
+    test("quantity") {
+      import autoset.types.Quantity
+      assert(ok[Quantity]("512") == Quantity(512, ""))
+      assert(ok[Quantity]("1.5G") == Quantity(1.5, "G"))
+      assert(ok[Quantity](" 4 Mi ") == Quantity(4, "Mi"))
+      assert(ok[Quantity]("-1Ki") == Quantity(-1, "Ki"))
+      assert(ok[Quantity](".5k") == Quantity(0.5, "k"))
+      assert(ok[Quantity]("2.") == Quantity(2, ""))
+      assert(ok[Quantity]("+3m") == Quantity(3, "m"))
+      // case matters: milli is not mega, pico is not peta
+      assert(ok[Quantity]("1m").toScale("") == 0.001)
+      assert(ok[Quantity]("1M").toScale("") == 1000000.0)
+      val expected = "expected a quantity and scale (e.g. '512', '1.5G' or '4Mi') for 'a.b', found"
+      for bad <- List("", "k", "1 G i", "1e3", "lots", "1.5.2") do
+        assert(err[Quantity](bad) == s"$expected '$bad'")
+      // outside femto to peta, and the orders of magnitude SI has but this skips
+      for bad <- List("1E", "1KI", "1mi", "2c", "2h", "3da") do
+        assert(err[Quantity](bad).startsWith("expected a quantity at one of the scales 'f', 'p'"))
+      assert(err[Quantity]("9" * 400) == s"expected a quantity which is finite for 'a.b', found '${"9" * 400}'")
+      assert(err[Quantity](nul(file(1))).endsWith("found null"))
+      // a whole number is shown as one, and a bare number as a number
+      assert(readers.QuantityReader.show(Quantity(2, "G")) == Some(Str("2G", LitKind.String, Nil)))
+      assert(readers.QuantityReader.show(Quantity(1.5, "G")) == Some(Str("1.5G", LitKind.String, Nil)))
+      assert(readers.QuantityReader.show(Quantity(512, "")) == Some(Str("512", LitKind.Num, Nil)))
+    }
     test("byte array") {
       def bytes(raw: String) = ok[Array[Byte]](raw).toList
       def ascii(s: String) = s.map(_.toByte).toList
@@ -384,7 +409,19 @@ object ReadersTest extends TestSuite:
       assert(bytes("+/8=") == List(0xfb.toByte, 0xff.toByte))
       assert(bytes("-_8=") == List(0xfb.toByte, 0xff.toByte))
       val expected = "expected base64-encoded data for 'a.b', found"
-      for bad <- List("a", "aGVsbG8==", "!!", "aG$s") do
+      // the same input is accepted or rejected on every platform, whatever
+      // the platform's own decoder would make of it
+      val malformed = List(
+        "a", // a trailing character which encodes nothing
+        "aGVsbG8==", // surplus padding, which scala native's decoder allows
+        "aGVsbG8===",
+        "-_8==",
+        "aG=sbG8=", // padding which is not at the end
+        "+_8=", // the two alphabets mixed
+        "!!",
+        "aG$s"
+      )
+      for bad <- malformed do
         assert(err[Array[Byte]](bad) == s"$expected '$bad'")
       // an array of bytes is base64, not an array of numbers
       assert(err[Array[Byte]](arr(file(1))(str("1", file(1)))) == s"$expected an array")

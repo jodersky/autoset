@@ -1,6 +1,7 @@
 package autoset.derivation
 
 import autoset.model.*
+import autoset.types.Quantity
 import ReaderUtils.mismatch
 
 /** Readers for the config model's values, primitives and common standard
@@ -295,14 +296,27 @@ trait BaseReaders extends ReadersApi:
   /** Decode base64 data, accepting both the standard and URL-safe alphabets,
     * with or without padding. Whitespace is ignored, so that data may be
     * wrapped over several lines.
+    *
+    * What is accepted is checked here rather than left to the platform's
+    * decoder, since they do not agree: Scala Native's accepts surplus
+    * padding, such as `aGVsbG8==`, which the JVM's rejects. A config file
+    * which one platform reads and the other does not would be worse than
+    * either rule on its own.
     */
   private def decodeBase64(raw: String): Either[String, Array[Byte]] =
     val s = raw.filterNot(_.isWhitespace)
-    val decoder =
-      if s.contains('-') || s.contains('_') then java.util.Base64.getUrlDecoder
-      else java.util.Base64.getDecoder
-    try Right(decoder.decode(s))
-    catch case _: IllegalArgumentException => Left(expectedBase64)
+    val urlSafe = s.exists(c => c == '-' || c == '_')
+    // padding, if any, is one or two '=' at the very end
+    val alphabet = if urlSafe then "[A-Za-z0-9_-]*={0,2}" else "[A-Za-z0-9+/]*={0,2}"
+    // four characters encode three bytes, so a last group of one is a
+    // character which encodes nothing, whether the data is padded or not
+    val whole = if s.endsWith("=") then s.length % 4 == 0 else s.length % 4 != 1
+    if !s.matches(alphabet) || !whole then Left(expectedBase64)
+    else
+      val decoder =
+        if urlSafe then java.util.Base64.getUrlDecoder else java.util.Base64.getDecoder
+      try Right(decoder.decode(s))
+      catch case _: IllegalArgumentException => Left(expectedBase64)
 
   /** Reads binary data, such as a key or a certificate, from a base64-encoded
     * string (see `decodeBase64` for what is accepted).
@@ -327,3 +341,31 @@ trait BaseReaders extends ReadersApi:
       catch case scala.util.control.NonFatal(_) => None
     def read(value: Value, base: Option[geny.Readable], ctx: Context) =
       ByteArrayReader.read(value, None, ctx).map(geny.Readable.ByteArrayReadable(_))
+
+  /** Reads a quantity: a number, optionally followed by a scale, e.g.
+    * '512', '1.5G' or '4 Mi'. `u` is also accepted written as 'µ'.
+    *
+    * The scale is kept as it was written, so that a quantity which is read
+    * and shown again reads the same.
+    */
+  given QuantityReader: Reader[Quantity] =
+    val expected = "a quantity and scale (e.g. '512', '1.5G' or '4Mi')"
+    val known = Quantity.scales.filter(_ != "").map(s => s"'$s'").mkString(", ")
+    val syntax = """([+-]?(?:\d+\.?\d*|\.\d+))\s*([a-zA-Zµ]*)""".r
+    new ParsedReader[Quantity](expected)({ raw =>
+      raw.trim match
+        case syntax(value, scale) =>
+          (value.toDoubleOption.filter(_.isFinite), Quantity.scale(scale)) match
+            case (Some(v), Some(s)) => Right(Quantity(v, s))
+            case (None, _) => Left("a quantity which is finite")
+            case (_, None) => Left(s"a quantity at one of the scales $known")
+        case _ => Left(expected)
+    }):
+      override def show(a: Quantity) =
+        // a whole number is shown as one, so that `2G` is not shown as `2.0G`
+        val value =
+          if a.value.isWhole && a.value.abs <= (1L << 53).toDouble then a.value.toLong.toString
+          else a.value.toString
+        // a quantity at no scale is a number in formats which have them
+        val kind = if a.scale == "" then LitKind.Num else LitKind.String
+        Some(Str(s"$value${a.scale}", kind, Nil))

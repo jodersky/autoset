@@ -91,11 +91,24 @@ object ini extends Module:
     object test extends IniTests with ScalaNativeTests:
       def nativeLinkStubs = true
 
+object types extends Module:
+  trait TypesModule extends AutosetModule:
+    def artifactName = "autoset-types"
+    def mvnDeps = Seq()
+
+  object jvm extends TypesModule:
+    object test extends Tests
+
+  object native extends TypesModule with ScalaNativeModule:
+    def scalaNativeVersion = scalaNative
+    object test extends Tests with ScalaNativeTests:
+      def nativeLinkStubs = true
+
 object autoset extends Module:
   object jvm extends AutosetModule:
     def sourcesFolders = Seq("src", "src-jvm")
     def artifactName = "autoset"
-    def moduleDeps = Seq(ini.jvm)
+    def moduleDeps = Seq(ini.jvm, types.jvm)
     object test extends Tests
 
     // Compiles uses of autoset's macros with -Xcheck-macros, to catch malformed
@@ -109,7 +122,7 @@ object autoset extends Module:
   object native extends AutosetModule with ScalaNativeModule:
     def sourcesFolders = Seq("src", "src-native")
     def artifactName = "autoset"
-    def moduleDeps = Seq(ini.native)
+    def moduleDeps = Seq(ini.native, types.native)
     def scalaNativeVersion = scalaNative
     def mvnDeps = super.mvnDeps() ++ Seq(thirdparty.javatime, thirdparty.javatimeTzdb)
     object test extends Tests with ScalaNativeTests:
