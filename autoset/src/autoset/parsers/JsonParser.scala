@@ -72,7 +72,13 @@ object JsonParser extends FormatParser:
   ): Option[Obj] =
     val ls = LocationStream(stream, sizeHint)
     try
-      ujson.transform(ls, ValueVisitor(name, ls, reporter)) match
+      // Parse from a byte array, not the stream: since ujson 4.4.3, indices
+      // passed to visitors are too large once a stream parser's buffer has been
+      // compacted, because BufferingElemParser.growBuffer adds to droppedOffset
+      // even though the indices it's added to are already absolute. Reading
+      // everything up front is fine, since LocationStream keeps a copy of the
+      // whole input in memory anyway. TODO: fix upstream
+      ujson.transform(ls.readAllBytes(), ValueVisitor(name, ls, reporter)) match
         case o: Obj => Some(o)
         case other =>
           val idx = other.effectiveOrigin match

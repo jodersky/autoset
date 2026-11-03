@@ -7,11 +7,11 @@ val scala3 = "3.9.0"
 val scalaNative = "0.5.12"
 
 object thirdparty:
-  val oslib = mvn"com.lihaoyi::os-lib::0.11.6"
+  val oslib = mvn"com.lihaoyi::os-lib::0.11.10"
   val geny = mvn"com.lihaoyi::geny::1.1.1"
   val utest = mvn"com.lihaoyi::utest::0.9.1"
-  val ujson = mvn"com.lihaoyi::ujson::4.4.0"
-  val yamlesque = mvn"io.crashbox::yamlesque::0.5.1"
+  val ujson = mvn"com.lihaoyi::ujson::4.4.3"
+  val yamlesque = mvn"io.crashbox::yamlesque::0.5.2"
   val sconfig = mvn"org.ekrich::sconfig::1.12.0"
 
   val javatime = mvn"io.github.cquiroz::scala-java-time::2.6.0"
